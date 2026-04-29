@@ -947,13 +947,36 @@ class Store {
     }
   }
 
+  startResearchWithSavedSettings(): void {
+    if (this._researchState !== ResearchState.IDLE || useBusyState().isBusy) {
+      return;
+    }
+    api
+      .loadResearchSettings()
+      .then((settings) => {
+        // ダイアログ状態を経由せず直接起動することで、ダイアログが表示されないようにする
+        if (this._researchState !== ResearchState.IDLE || useBusyState().isBusy) {
+          return;
+        }
+        this.launchResearch(settings);
+      })
+      .catch((e) => {
+        useErrorStore().add(e);
+      });
+  }
+
   startResearch(researchSettings: ResearchSettings): void {
     if (this._researchState !== ResearchState.STARTUP_DIALOG || useBusyState().isBusy) {
       return;
     }
+    this.launchResearch(researchSettings);
+  }
+
+  private launchResearch(researchSettings: ResearchSettings): void {
     useBusyState().retain();
     if (!researchSettings.usi) {
       useErrorStore().add(new Error("エンジンが設定されていません。"));
+      useBusyState().release();
       return;
     }
     api
@@ -975,6 +998,7 @@ class Store {
       })
       .catch((e) => {
         useErrorStore().add("検討の初期化中にエラーが出ました: " + e);
+        this._researchState = ResearchState.IDLE;
       })
       .finally(() => {
         useBusyState().release();

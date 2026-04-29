@@ -311,7 +311,7 @@ const onToggleResearch = () => {
   if (store.researchState === ResearchState.RUNNING) {
     store.stopResearch();
   } else {
-    store.showResearchDialog();
+    store.startResearchWithSavedSettings();
   }
 };
 
