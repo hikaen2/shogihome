@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import * as log4js from "log4js";
-import { EngineProcess, GameResult } from "@/background/usi/engine";
-import { ChildProcess } from "@/background/usi/process";
+import { EngineProcess, GameResult } from "@/background/usi/engine.js";
+import { ChildProcess } from "@/background/usi/process.js";
 import { MockedClass } from "vitest";
 
-vi.mock("@/background/usi/process");
+vi.mock("@/background/usi/process.js");
 
 const mockChildProcess = ChildProcess as MockedClass<typeof ChildProcess>;
 
@@ -20,24 +20,26 @@ function bindHandlers(engine: EngineProcess) {
     usiok: vi.fn(),
     ready: vi.fn(),
     bestmove: vi.fn(),
+    goEnd: vi.fn(),
     checkmate: vi.fn(),
     checkmateNotImplemented: vi.fn(),
     checkmateTimeout: vi.fn(),
+    checkmateEnd: vi.fn(),
     noMate: vi.fn(),
     info: vi.fn(),
-    ponderInfo: vi.fn(),
   };
   engine.on("timeout", handlers.timeout);
   engine.on("error", handlers.error);
   engine.on("usiok", handlers.usiok);
   engine.on("ready", handlers.ready);
   engine.on("bestmove", handlers.bestmove);
+  engine.on("goEnd", handlers.goEnd);
   engine.on("checkmate", handlers.checkmate);
   engine.on("checkmateNotImplemented", handlers.checkmateNotImplemented);
   engine.on("checkmateTimeout", handlers.checkmateTimeout);
+  engine.on("checkmateEnd", handlers.checkmateEnd);
   engine.on("noMate", handlers.noMate);
   engine.on("info", handlers.info);
-  engine.on("ponderInfo", handlers.ponderInfo);
   return handlers;
 }
 
@@ -75,40 +77,12 @@ describe("background/usi/engine", () => {
     expect(engine.name).toBe("DummyEngine");
     expect(engine.author).toBe("Ryosuke Kubo");
     expect(engine.engineOptions).toStrictEqual({
-      USI_Hash: {
-        name: "USI_Hash",
-        type: "spin",
-        default: 32,
-        order: 1,
-      },
-      USI_Ponder: {
-        name: "USI_Ponder",
-        type: "check",
-        default: "true",
-        order: 2,
-      },
-      StringA: {
-        name: "StringA",
-        type: "string",
-        default: "foo",
-        order: 100,
-      },
-      StringB: {
-        name: "StringB",
-        type: "string",
-        order: 101,
-      },
-      CheckA: {
-        name: "CheckA",
-        type: "check",
-        default: "true",
-        order: 102,
-      },
-      CheckB: {
-        name: "CheckB",
-        type: "check",
-        order: 103,
-      },
+      USI_Hash: { name: "USI_Hash", type: "spin", default: 32, order: 1 },
+      USI_Ponder: { name: "USI_Ponder", type: "check", default: "true", order: 2 },
+      StringA: { name: "StringA", type: "string", default: "foo", order: 100 },
+      StringB: { name: "StringB", type: "string", order: 101 },
+      CheckA: { name: "CheckA", type: "check", default: "true", order: 102 },
+      CheckB: { name: "CheckB", type: "check", order: 103 },
       ComboA: {
         name: "ComboA",
         type: "combo",
@@ -123,25 +97,9 @@ describe("background/usi/engine", () => {
         vars: ["default", "quux", "corge"],
         order: 105,
       },
-      Filename: {
-        name: "Filename",
-        type: "filename",
-        default: "/path/to/file",
-        order: 106,
-      },
-      SpinA: {
-        name: "SpinA",
-        type: "spin",
-        order: 107,
-      },
-      SpinB: {
-        name: "SpinB",
-        type: "spin",
-        default: 8,
-        min: -20,
-        max: 30,
-        order: 108,
-      },
+      Filename: { name: "Filename", type: "filename", default: "/path/to/file", order: 106 },
+      SpinA: { name: "SpinA", type: "spin", order: 107 },
+      SpinB: { name: "SpinB", type: "spin", default: 8, min: -20, max: 30, order: 108 },
     });
     engine.quit();
     expect(mockChildProcess.prototype.send).toBeCalledTimes(2);
@@ -155,53 +113,14 @@ describe("background/usi/engine", () => {
   it("set-options", async () => {
     const engine = new EngineProcess("/path/to/engine", 123, log4js.getLogger(), {
       engineOptions: [
-        {
-          name: "USI_Hash",
-          type: "spin",
-          order: 1,
-          value: 32,
-        },
-        {
-          name: "USI_Ponder",
-          type: "check",
-          order: 2,
-          value: "true",
-        },
-        {
-          name: "StringA",
-          type: "string",
-          default: "foo",
-          order: 100,
-        },
-        {
-          name: "StringB",
-          type: "string",
-          default: "bar",
-          order: 101,
-          value: "baz",
-        },
-        {
-          name: "StringC",
-          type: "string",
-          order: 102,
-        },
-        {
-          name: "Filename",
-          type: "filename",
-          order: 103,
-          value: "/path/to/file",
-        },
-        {
-          name: "Spin",
-          type: "spin",
-          order: 104,
-          value: -81,
-        },
-        {
-          name: "Button",
-          type: "button",
-          order: 105,
-        },
+        { name: "USI_Hash", type: "spin", order: 1, value: 32 },
+        { name: "USI_Ponder", type: "check", order: 2, value: "true" },
+        { name: "StringA", type: "string", default: "foo", order: 100 },
+        { name: "StringB", type: "string", default: "bar", order: 101, value: "baz" },
+        { name: "StringC", type: "string", order: 102 },
+        { name: "Filename", type: "filename", order: 103, value: "/path/to/file" },
+        { name: "Spin", type: "spin", order: 104, value: -81 },
+        { name: "Button", type: "button", order: 105 },
       ],
     });
     const handlers = bindHandlers(engine);
@@ -306,6 +225,7 @@ describe("background/usi/engine", () => {
     });
     onReceive("bestmove 7g7f ponder 3c3d");
     expect(handlers.bestmove).lastCalledWith("position test01", "7g7f", "3c3d");
+    expect(handlers.goEnd).toBeCalledTimes(1);
     engine.goPonder("position test01-ponder", {
       btime: 53e3,
       wtime: 60e3,
@@ -320,7 +240,7 @@ describe("background/usi/engine", () => {
       "go ponder btime 53000 wtime 60000 binc 5000 winc 5000",
     );
     onReceive("info depth 5 seldepth 10 currmove 2g2f");
-    expect(handlers.ponderInfo).lastCalledWith("position test01-ponder", {
+    expect(handlers.info).lastCalledWith("position test01-ponder", {
       depth: 5,
       seldepth: 10,
       currmove: "2g2f",
@@ -335,6 +255,7 @@ describe("background/usi/engine", () => {
     expect(mockChildProcess.prototype.send).lastCalledWith("ponderhit");
     onReceive("bestmove 1g1f");
     expect(handlers.bestmove).lastCalledWith("position test01-ponder", "1g1f", undefined);
+    expect(handlers.goEnd).toBeCalledTimes(2);
     engine.gameover(GameResult.WIN);
     expect(mockChildProcess.prototype.send).lastCalledWith("gameover win");
 
@@ -364,6 +285,7 @@ describe("background/usi/engine", () => {
     expect(mockChildProcess.prototype.send).lastCalledWith("stop");
     onReceive("bestmove 2g2f");
     expect(handlers.bestmove).lastCalledWith("position test02", "2g2f", undefined);
+    expect(handlers.goEnd).toBeCalledTimes(3);
     engine.gameover(GameResult.LOSE);
     expect(mockChildProcess.prototype.send).lastCalledWith("gameover lose");
 
@@ -432,7 +354,7 @@ describe("background/usi/engine", () => {
     expect(mockChildProcess.prototype.send).nthCalledWith(6, "position test01-ponder");
     expect(mockChildProcess.prototype.send).nthCalledWith(7, "go ponder"); // early-ponder では go ponder で時間情報を送信しない。
     onReceive("info depth 5 seldepth 10 currmove 2g2f");
-    expect(handlers.ponderInfo).lastCalledWith("position test01-ponder", {
+    expect(handlers.info).lastCalledWith("position test01-ponder", {
       depth: 5,
       seldepth: 10,
       currmove: "2g2f",
@@ -476,18 +398,28 @@ describe("background/usi/engine", () => {
     expect(mockChildProcess.prototype.send).nthCalledWith(5, "go mate infinite");
     onReceive("checkmate 2c2b 3a2b 3c3a+");
     expect(handlers.checkmate).lastCalledWith("position test01", ["2c2b", "3a2b", "3c3a+"]);
+    expect(handlers.checkmateEnd).toBeCalledTimes(1);
 
     engine.goMate("position test02");
     onReceive("checkmate nomate");
     expect(handlers.noMate).lastCalledWith("position test02");
+    expect(handlers.checkmateEnd).toBeCalledTimes(2);
 
     engine.goMate("position test03");
     onReceive("checkmate timeout");
     expect(handlers.checkmateTimeout).lastCalledWith("position test03");
+    expect(handlers.checkmateEnd).toBeCalledTimes(3);
 
     engine.goMate("position test04");
     onReceive("checkmate notimplemented");
     expect(handlers.checkmateNotImplemented).toBeCalled();
+    expect(handlers.checkmateEnd).toBeCalledTimes(4);
+
+    engine.goMate("position test05", 12.3456);
+    expect(mockChildProcess.prototype.send).lastCalledWith("go mate 12345");
+    onReceive("checkmate 2c2b 3a2b 3c3a+");
+    expect(handlers.checkmate).lastCalledWith("position test05", ["2c2b", "3a2b", "3c3a+"]);
+    expect(handlers.checkmateEnd).toBeCalledTimes(5);
 
     engine.quit();
     onClose();
@@ -597,5 +529,34 @@ describe("background/usi/engine", () => {
     expect(handlers.bestmove).not.toBeCalled(); // 1 局目で要求していた bestmove は無視される。
     onReceive("bestmove 2g2f ponder 8c8d");
     expect(handlers.bestmove).lastCalledWith("position test02", "2g2f", "8c8d");
+  });
+
+  it("setoption_reservation", async () => {
+    const engine = new EngineProcess("/path/to/engine", 123, log4js.getLogger(), {});
+    const handlers = bindHandlers(engine);
+    engine.launch();
+    const onReceive = getChildProcessHandler(mockChildProcess, "receive");
+    onReceive("id name DummyEngine");
+    onReceive("usiok");
+
+    engine.ready();
+    onReceive("readyok");
+    expect(handlers.ready).toBeCalledTimes(1);
+    engine.go("position test01", {
+      btime: 60e3,
+      wtime: 60e3,
+      byoyomi: 0,
+      binc: 5e3,
+      winc: 5e3,
+    });
+    engine.stop();
+    engine.setOption("USI_Hash", 64); // should be reserved
+    engine.setOption("MultiPV", 3); // should be reserved
+    expect(mockChildProcess.prototype.send).toBeCalledTimes(6);
+    expect(mockChildProcess.prototype.send).nthCalledWith(6, "stop"); // only stop command should be sent
+    onReceive("bestmove 7g7f ponder 3c3d");
+    expect(mockChildProcess.prototype.send).toBeCalledTimes(8);
+    expect(mockChildProcess.prototype.send).nthCalledWith(7, "setoption name USI_Hash value 64");
+    expect(mockChildProcess.prototype.send).lastCalledWith("setoption name MultiPV value 3");
   });
 });

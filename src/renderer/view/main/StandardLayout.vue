@@ -3,6 +3,7 @@
     <Splitpanes
       class="main-frame"
       horizontal
+      :maximize-panes="false"
       :dbl-click-splitter="false"
       @resize="onResizeMain"
       @resized="onResizedMain"
@@ -62,6 +63,7 @@
           v-else
           class="bottom-frame"
           vertical
+          :maximize-panes="false"
           :dbl-click-splitter="false"
           @resize="onResizeBottom"
           @resized="onResizedBottom"
@@ -77,6 +79,7 @@
           </Pane>
           <Pane>
             <TabPane
+              v-if="appSettings.tabPaneType === TabPaneType.DOUBLE"
               class="full"
               :size="tabPaneSize2"
               :visible-tabs="[Tab.COMMENT, Tab.CHART, Tab.PERCENTAGE_CHART]"
@@ -85,6 +88,18 @@
               @on-change-tab="onChangeTab2"
               @on-minimize="onMinimizeTab"
             />
+            <div v-else class="full column">
+              <TabPane
+                class="shadow-bottom margin-bottom"
+                :size="tabPaneSize2a"
+                :visible-tabs="[Tab.CHART, Tab.PERCENTAGE_CHART]"
+                :active-tab="appSettings.tab2"
+                :display-minimize-toggle="true"
+                @on-change-tab="onChangeTab2"
+                @on-minimize="onMinimizeTab"
+              />
+              <RecordComment class="full" />
+            </div>
           </Pane>
         </Splitpanes>
       </Pane>
@@ -98,6 +113,7 @@ import { reactive, onMounted, onUnmounted, computed, ref } from "vue";
 import BoardPane from "./BoardPane.vue";
 import RecordPane, { minWidth as minRecordWidth } from "./RecordPane.vue";
 import TabPane, { headerHeight as tabHeaderHeight } from "./TabPane.vue";
+import RecordComment from "@/renderer/view/tab/RecordComment.vue";
 import ControlPane, { ControlGroup } from "./ControlPane.vue";
 import { RectSize } from "@/common/assets/geometry";
 import { AppSettingsUpdate, Tab, TabPaneType } from "@/common/settings/app";
@@ -105,7 +121,7 @@ import { BoardLayoutType } from "@/common/settings/layout";
 import api from "@/renderer/ipc/api";
 import { LogLevel } from "@/common/log";
 import { toString } from "@/common/helpers/string";
-import { Lazy } from "@/renderer/helpers/lazy";
+import { Lazy } from "@/common/helpers/lazy";
 import { Splitpanes, Pane } from "splitpanes";
 import "splitpanes/dist/splitpanes.css";
 import { IconType } from "@/renderer/assets/icons";
@@ -171,29 +187,29 @@ const onUnhideTabView = () => {
 };
 
 const mainLazyUpdate = new Lazy();
-const onResizeMain = (panes: { size: number }[]) => {
-  const newValue = panes[0].size;
+const onResizeMain = (args: { panes: { size: number }[] }) => {
+  const newValue = args.panes[0].size;
   mainLazyUpdate.after(() => {
     topPaneHeightPercentage.value = newValue;
   }, lazyUpdateDelay);
 };
-const onResizedMain = (panes: { size: number }[]) => {
+const onResizedMain = (args: { panes: { size: number }[] }) => {
   mainLazyUpdate.clear();
-  const newValue = panes[0].size;
+  const newValue = args.panes[0].size;
   topPaneHeightPercentage.value = newValue;
   updateAppSettings({ topPaneHeightPercentage: newValue });
 };
 
 const bottomLazyUpdate = new Lazy();
-const onResizeBottom = (panes: { size: number }[]) => {
-  const newValue = panes[0].size;
+const onResizeBottom = (args: { panes: { size: number }[] }) => {
+  const newValue = args.panes[0].size;
   bottomLazyUpdate.after(() => {
     bottomLeftPaneWidthPercentage.value = newValue;
   }, lazyUpdateDelay);
 };
-const onResizedBottom = (panes: { size: number }[]) => {
+const onResizedBottom = (args: { panes: { size: number }[] }) => {
   bottomLazyUpdate.clear();
-  const newValue = panes[0].size;
+  const newValue = args.panes[0].size;
   bottomLeftPaneWidthPercentage.value = newValue;
   updateAppSettings({ bottomLeftPaneWidthPercentage: newValue });
 };
@@ -227,9 +243,10 @@ const boardPaneStyle = computed(() => {
 const recordPaneStyle = computed(() => {
   const width =
     windowSize.width -
-    boardPaneSize.width -
-    margin * 3 -
-    (appSettings.boardLayoutType === BoardLayoutType.STANDARD ? 0 : boardPaneSize.height * 0.1);
+    (boardPaneSize.width +
+      margin * 3 +
+      // コンパクトとポータブルは左端に 1x10 のメニューボタンを配置するため高さの 1/10 を確保
+      (appSettings.boardLayoutType === BoardLayoutType.STANDARD ? 0 : boardPaneSize.height * 0.1));
   const height = boardPaneSize.height;
   return {
     margin: `${margin}px ${margin}px ${margin}px 0`,
@@ -257,6 +274,17 @@ const tabPaneSize2 = computed(() => {
     (windowSize.height - splitterWidth) * (bottomPaneHeightPercentage.value / 100),
   );
 });
+
+const tabPaneSize2a = computed(
+  () =>
+    new RectSize(
+      tabPaneSize2.value.width,
+      Math.min(
+        Math.max(tabPaneSize2.value.width * 0.5, 150),
+        tabPaneSize2.value.height * 0.2 + 100,
+      ),
+    ),
+);
 </script>
 
 <style>
@@ -280,6 +308,12 @@ const tabPaneSize2 = computed(() => {
 </style>
 
 <style scoped>
+.shadow-bottom {
+  box-shadow: 0px 6px 6px -3px var(--shadow-color);
+}
+.margin-bottom {
+  margin-bottom: 8px;
+}
 .compact-control {
   margin-top: 10px;
   margin-bottom: 10px;

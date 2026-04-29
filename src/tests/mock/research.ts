@@ -1,21 +1,27 @@
-import { ResearchSettings } from "@/common/settings/research";
-import { usiEngines } from "./usi";
+import { ResearchSettings } from "@/common/settings/research.js";
+import { testUSIEngine } from "./usi.js";
 
 export const researchSettings: ResearchSettings = {
-  usi: usiEngines,
+  usi: testUSIEngine,
   enableMaxSeconds: false,
   maxSeconds: 5,
+  overrideMultiPV: false,
+  multiPV: 1,
 };
 
 export const researchSettingsMax5Seconds: ResearchSettings = {
-  usi: usiEngines,
+  usi: testUSIEngine,
   enableMaxSeconds: true,
   maxSeconds: 5,
+  overrideMultiPV: false,
+  multiPV: 1,
 };
 
 export const researchSettingsSecondaryEngines: ResearchSettings = {
-  usi: usiEngines,
-  secondaries: [{ usi: usiEngines }, { usi: usiEngines }],
+  usi: testUSIEngine,
+  secondaries: [{ usi: testUSIEngine }, { usi: testUSIEngine }],
   enableMaxSeconds: false,
   maxSeconds: 5,
+  overrideMultiPV: false,
+  multiPV: 1,
 };

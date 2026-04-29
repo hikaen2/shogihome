@@ -1,42 +1,49 @@
 import path from "node:path";
 import { promises as fs } from "node:fs";
-import { getAppPath } from "@/background/proc/env";
+import { getAppPath } from "@/background/proc/path-electron.js";
 import {
+  BackupEntryV2,
   HistoryClass,
   RecordFileHistory,
   RecordFileHistoryEntry,
   getEmptyHistory,
-} from "@/common/file/history";
-import { getAppLogger } from "@/background/log";
+} from "@/common/file/history.js";
+import { getAppLogger } from "@/background/log.js";
 import AsyncLock from "async-lock";
-import { requireElectron } from "@/background/helpers/portability";
+import { exists } from "@/background/helpers/file.js";
+import { writeFileAtomic } from "./atomic.js";
+import { getBlackPlayerName, getWhitePlayerName, importKIF, Record } from "tsshogi";
+import { getRecordTitleFromMetadata } from "@/common/helpers/metadata.js";
 
 const historyMaxLength = 20;
 
 const userDir = getAppPath("userData");
 const historyPath = path.join(userDir, "record_file_history.json");
+
+// 現在はこのディレクトリに書き出していないが、
+// 古いバージョンで作られたファイルが残っている可能性があるので参照や削除の実装は残しておく
 const backupDir = path.join(userDir, "backup/kifu");
 
-export function openBackupDirectory(): void {
-  requireElectron().shell.openPath(backupDir);
-}
-
 const lock = new AsyncLock();
+const lockKey = "history";
 
 export async function getHistoryWithoutLock(): Promise<RecordFileHistory> {
   try {
-    await fs.lstat(historyPath);
+    if (!(await exists(historyPath))) {
+      return { entries: [] };
+    }
     return {
       ...getEmptyHistory(),
       ...JSON.parse(await fs.readFile(historyPath, "utf8")),
     };
-  } catch {
+  } catch (e) {
+    getAppLogger().warn(`failed to load history: ${e}`);
     return { entries: [] };
   }
 }
 
-function saveHistories(history: RecordFileHistory): Promise<void> {
-  return fs.writeFile(historyPath, JSON.stringify(history, undefined, 2), "utf8");
+async function saveHistories(history: RecordFileHistory): Promise<void> {
+  await writeFileAtomic(historyPath, JSON.stringify(history, undefined, 2), "utf8");
 }
 
 function issueEntryID(): string {
@@ -60,16 +67,18 @@ function trancate(history: RecordFileHistory): void {
 }
 
 export function getHistory(): Promise<RecordFileHistory> {
-  return lock.acquire("history", async () => {
+  return lock.acquire(lockKey, async () => {
     return await getHistoryWithoutLock();
   });
 }
 
 export function addHistory(path: string): void {
-  lock.acquire("history", async () => {
+  lock.acquire(lockKey, async () => {
     try {
       const history = await getHistoryWithoutLock();
-      history.entries = history.entries.filter((e) => e.userFilePath !== path);
+      history.entries = history.entries.filter(
+        (e) => e.class !== HistoryClass.USER || e.userFilePath !== path,
+      );
       history.entries.push({
         id: issueEntryID(),
         time: new Date().toISOString(),
@@ -85,7 +94,7 @@ export function addHistory(path: string): void {
 }
 
 export function clearHistory(): Promise<void> {
-  return lock.acquire("history", async () => {
+  return lock.acquire(lockKey, async () => {
     const history = await getHistoryWithoutLock();
     for (const entry of history.entries) {
       if (entry.class === HistoryClass.BACKUP && entry.backupFileName) {
@@ -97,19 +106,25 @@ export function clearHistory(): Promise<void> {
 }
 
 export function saveBackup(kif: string): Promise<void> {
-  return lock.acquire("history", async () => {
-    const unixTime = new Date().getTime();
-    const random = Math.floor(Math.random() * 10000);
-    const fileName = `${unixTime}-${random}.kifu`;
-    const filePath = path.join(backupDir, fileName);
+  const entry = {
+    class: HistoryClass.BACKUP_V2,
+    kif,
+  } as BackupEntryV2;
+
+  const record = importKIF(kif);
+  if (record instanceof Record) {
+    entry.title = getRecordTitleFromMetadata(record.metadata);
+    entry.blackPlayerName = getBlackPlayerName(record.metadata);
+    entry.whitePlayerName = getWhitePlayerName(record.metadata);
+    entry.ply = record.length;
+  }
+
+  return lock.acquire(lockKey, async () => {
     const history = await getHistoryWithoutLock();
-    await fs.mkdir(backupDir, { recursive: true });
-    await fs.writeFile(filePath, kif);
     history.entries.push({
       id: issueEntryID(),
       time: new Date().toISOString(),
-      class: HistoryClass.BACKUP,
-      backupFileName: fileName,
+      ...entry,
     });
     trancate(history);
     await saveHistories(history);

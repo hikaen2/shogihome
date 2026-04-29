@@ -1,12 +1,13 @@
-import { RectSize } from "@/common/assets/geometry";
-import { getPieceImageAssetName, pieceAssetTypes } from "@/common/assets/pieces";
+import { RectSize } from "@/common/assets/geometry.js";
+import { getPieceImageAssetName, pieceAssetTypes } from "@/common/assets/pieces.js";
 import {
   BoardImageType,
   BoardLabelType,
   KingPieceType,
   PieceStandImageType,
-} from "@/common/settings/app";
-import preloadImage from "@/renderer/assets/preload";
+  PromotionSelectorStyle,
+} from "@/common/settings/app.js";
+import preloadImage from "@/renderer/assets/preload.js";
 import { Color, PieceType } from "tsshogi";
 
 type PieceImages = {
@@ -20,11 +21,12 @@ export type Config = {
   pieceStandImageType: PieceStandImageType;
   kingPieceType: KingPieceType;
   pieceImages: PieceImages;
-  boardGridImage: string;
+  boardGridColor: string;
   boardTextureImage: string | null;
   pieceStandImage: string | null;
   boardImageOpacity: number;
   pieceStandImageOpacity: number;
+  promotionSelectorStyle: PromotionSelectorStyle;
   boardLabelType: BoardLabelType;
   upperSizeLimit: RectSize;
   flip?: boolean;
@@ -40,6 +42,7 @@ export function newConfig(params: {
   kingPieceType: KingPieceType;
   boardImageOpacity: number;
   pieceStandImageOpacity: number;
+  promotionSelectorStyle: PromotionSelectorStyle;
   boardLabelType: BoardLabelType;
   upperSizeLimit: RectSize;
   flip?: boolean;
@@ -50,7 +53,7 @@ export function newConfig(params: {
     pieceStandImageType: params.pieceStandImageType,
     kingPieceType: params.kingPieceType,
     pieceImages: getPieceTextureMap(params.pieceImageURLTemplate, params.kingPieceType),
-    boardGridImage: getBoardGridURL(params.boardImageType),
+    boardGridColor: getBoardGridColor(params.boardImageType),
     boardTextureImage: getBoardTextureURL(params.boardImageType, params.customBoardImageURL),
     pieceStandImage: getPieceStandTextureURL(
       params.pieceStandImageType,
@@ -58,12 +61,12 @@ export function newConfig(params: {
     ),
     boardImageOpacity: params.boardImageOpacity,
     pieceStandImageOpacity: params.pieceStandImageOpacity,
+    promotionSelectorStyle: params.promotionSelectorStyle,
     boardLabelType: params.boardLabelType,
     upperSizeLimit: params.upperSizeLimit,
     flip: params.flip,
     hideClock: params.hideClock,
   };
-  preloadImage(config.boardGridImage);
   if (config.boardTextureImage) {
     preloadImage(config.boardTextureImage);
   }
@@ -77,6 +80,8 @@ export function newConfig(params: {
 
 function getPieceStandTextureURL(type: PieceStandImageType, customURL?: string): string | null {
   switch (type) {
+    case PieceStandImageType.DARK_WOOD:
+      return "./stand/wood_dark.png";
     case PieceStandImageType.CUSTOM_IMAGE:
       return customURL || null;
   }
@@ -101,12 +106,12 @@ function getPieceTextureMap(template: string, kingPieceType: KingPieceType): Pie
   return m;
 }
 
-function getBoardGridURL(type: BoardImageType): string {
+function getBoardGridColor(type: BoardImageType): string {
   switch (type) {
     default:
-      return "./board/grid.svg";
+      return "black";
     case BoardImageType.DARK:
-      return "./board/grid_white.svg";
+      return "white";
   }
 }
 
@@ -114,8 +119,14 @@ function getBoardTextureURL(type: BoardImageType, customURL?: string): string | 
   switch (type) {
     case BoardImageType.LIGHT:
       return "./board/wood_light.png";
+    case BoardImageType.LIGHT2:
+      return "./board/wood_light2.png";
+    case BoardImageType.LIGHT3:
+      return "./board/wood_light3.png";
     case BoardImageType.WARM:
       return "./board/wood_warm.png";
+    case BoardImageType.WARM2:
+      return "./board/wood_warm2.png";
     case BoardImageType.CUSTOM_IMAGE:
       return customURL || null;
   }

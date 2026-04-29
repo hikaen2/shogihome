@@ -1,23 +1,58 @@
 "use strict";
 
-import { app, BrowserWindow, session, Menu, dialog } from "electron";
-import { loadAppSettingsOnce } from "@/background/settings";
+import { app, BrowserWindow, session, Menu, dialog, protocol } from "electron";
+import { loadAppSettingsOnce } from "@/background/settings.js";
 import {
   getAppLogger,
   LogDestination,
   setLogDestinations,
   shutdownLoggers,
-} from "@/background/log";
-import { isActiveSessionExists, quitAll as usiQuitAll } from "@/background/usi";
-import { validateHTTPRequest } from "./window/security";
-import { getPortableExeDir, isDevelopment, isPortable, isTest } from "@/background/proc/env";
-import { setLanguage, t } from "@/common/i18n";
-import { setInitialFilePath } from "./proc/args";
+} from "@/background/log.js";
+import { isActiveSessionExists, quitAll as usiQuitAll } from "@/background/usi/index.js";
+import {
+  APP_SCHEME,
+  FILE_SCHEME,
+  handleApp,
+  handleUserFile,
+  validateHTTPRequest,
+} from "./security/http.js";
+import { getPortableExeDir, isDevelopment, isPortable, isTest } from "@/background/proc/env.js";
+import { setLanguage, t } from "@/common/i18n/index.js";
+import { parseProcessArgs } from "./proc/args.js";
 import contextMenu from "electron-context-menu";
-import { LogType } from "@/common/log";
-import { isLogEnabled } from "@/common/settings/app";
-import { createWindow } from "./window/main";
+import { LogType } from "@/common/log.js";
+import { isLogEnabled } from "@/common/settings/app.js";
+import { createWindow } from "./window/main.js";
 import { spawn } from "child_process";
+import { invoke as invokeHeadless } from "./headless/invoke.js";
+import { setProcessArgs } from "./window/ipc.js";
+import { prefetchWindowsLogicalProcessorCount } from "./proc/state.js";
+
+const args = parseProcessArgs(process.argv);
+if (args instanceof Error) {
+  getAppLogger().error(`Failed to parse headless args: ${args.message}`);
+  process.exit(1);
+}
+
+switch (args.type) {
+  case "gui":
+    setProcessArgs(args);
+    break;
+  case "headless":
+    getAppLogger().info("headless mode enabled");
+    invokeHeadless(args)
+      .then(() => {
+        getAppLogger().info("headless operation completed");
+        process.exit(0);
+      })
+      .catch((e) => {
+        getAppLogger().error(`Headless operation failed: ${e.message}`);
+        process.exit(1);
+      });
+    break;
+}
+
+prefetchWindowsLogicalProcessorCount();
 
 const appSettings = loadAppSettingsOnce();
 for (const type of Object.values(LogType)) {
@@ -51,6 +86,9 @@ contextMenu({
   },
 });
 
+if (!appSettings.enableHardwareAcceleration) {
+  app.disableHardwareAcceleration();
+}
 app.enableSandbox();
 
 app.once("will-finish-launching", () => {
@@ -60,7 +98,7 @@ app.once("will-finish-launching", () => {
   app.once("open-file", (event, path) => {
     getAppLogger().info("on open-file: %s", path);
     event.preventDefault();
-    setInitialFilePath(path);
+    setProcessArgs({ ...args, path });
   });
 });
 
@@ -93,22 +131,27 @@ app.on("will-quit", (event) => {
   shutdownLoggers();
 });
 
-// Quit when all windows are closed.
-app.on("window-all-closed", () => {
-  getAppLogger().info("on window-all-closed");
+function onMainWindowClosed() {
   app.quit();
-});
+}
 
 app.on("activate", () => {
+  // Do not create a window in headless mode.
+  if (args.type === "headless") {
+    return;
+  }
   // On macOS it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+    createWindow(onMainWindowClosed);
   }
 });
 
 app.on("web-contents-created", (_, contents) => {
   contents.on("will-navigate", (event) => {
+    event.preventDefault();
+  });
+  contents.on("will-attach-webview", (event) => {
     event.preventDefault();
   });
   contents.setWindowOpenHandler(() => {
@@ -124,7 +167,7 @@ async function installElectronDevTools() {
 // opens a new MacOS App Instance using shell command.
 function openNewInstance() {
   const appPath = app.getPath("exe").replace("/Contents/MacOS/ShogiHome", "");
-  const child = spawn("open", ["-jn", appPath], { detached: true, stdio: "ignore" });
+  const child = spawn("open", ["-n", appPath], { detached: true, stdio: "ignore" });
   child.unref();
 }
 
@@ -138,10 +181,12 @@ const dockMenu = Menu.buildFromTemplate([
   },
 ]);
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on("ready", () => {
+protocol.registerSchemesAsPrivileged([APP_SCHEME, FILE_SCHEME]);
+
+app.whenReady().then(() => {
+  protocol.handle(APP_SCHEME.scheme, handleApp);
+  protocol.handle(FILE_SCHEME.scheme, handleUserFile);
+
   if (isDevelopment()) {
     getAppLogger().info("install Vue3 Dev Tools");
     // Install Vue DevTools
@@ -152,15 +197,18 @@ app.on("ready", () => {
   }
 
   // Set dock menu (MacOS only)
-  if (process.platform == "darwin") {
-    app.dock.setMenu(dockMenu);
-  }
+  app.dock?.setMenu(dockMenu);
 
   session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
     validateHTTPRequest(details.method, details.url);
     callback({});
   });
-  createWindow();
+
+  // Do not create a window in headless mode.
+  if (args.type === "headless") {
+    return;
+  }
+  createWindow(onMainWindowClosed);
 });
 
 // Exit cleanly on request from parent process in development mode.

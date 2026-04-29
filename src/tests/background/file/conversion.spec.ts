@@ -1,21 +1,22 @@
-import { convertRecordFiles } from "@/background/file/conversion";
-import { RecordFileFormat } from "@/common/file/record";
+import { convertRecordFiles } from "@/background/file/conversion.js";
+import { RecordFileFormat } from "@/common/file/record.js";
 import {
   DestinationType,
   FileNameConflictAction,
+  SourceType,
   defaultBatchConversionSettings,
-} from "@/common/settings/conversion";
+} from "@/common/settings/conversion.js";
 import fs from "node:fs";
 import path from "node:path";
-import { listFiles } from "@/background/helpers/file";
-import { defaultAppSettings } from "@/common/settings/app";
-import { saveAppSettings } from "@/background/settings";
-import { getTempPathForTesting } from "@/background/proc/env";
+import { listFiles } from "@/background/helpers/file.js";
+import { defaultAppSettings } from "@/common/settings/app.js";
+import { saveAppSettings } from "@/background/settings.js";
+import { getTempPathForTesting } from "@/background/proc/env.js";
 
 const tmpdir = path.join(getTempPathForTesting(), "conversion");
 
 describe("conversion", () => {
-  it("separate", async () => {
+  it("individual", async () => {
     const testCases = [
       {
         sourceFormats: [
@@ -182,6 +183,24 @@ describe("conversion", () => {
         expectedFiles: ["csa-sjis.ki2"],
       },
       {
+        sourceFormats: [RecordFileFormat.CSA],
+        subdirectories: false,
+        destination: "csa-to-ki2-utf8",
+        destinationFormat: RecordFileFormat.KI2,
+        useUTF8ForKifAndKi2: true,
+        createSubdirectories: true,
+        fileNameConflictAction: FileNameConflictAction.OVERWRITE,
+        expectedReport: {
+          successTotal: 1,
+          success: { ".csa": 1 },
+          failedTotal: 0,
+          failed: {},
+          skippedTotal: 0,
+          skipped: {},
+        },
+        expectedFiles: ["csa-sjis.ki2"],
+      },
+      {
         sourceFormats: [RecordFileFormat.KI2U],
         subdirectories: false,
         destination: "ki2u-to-kifu/overwrite",
@@ -251,11 +270,13 @@ describe("conversion", () => {
         ...defaultAppSettings(),
         returnCode: "\n",
         useCSAV3: !!testCase.csaV3,
+        useUTF8ForKifAndKi2: !!testCase.useUTF8ForKifAndKi2,
       });
       const destinationFullPath = path.join(tmpdir, testCase.destination);
       for (let i = 0; i < 1 + (testCase.repeat || 0); i++) {
         const result = await convertRecordFiles({
           ...defaultBatchConversionSettings(),
+          sourceType: SourceType.DIRECTORY,
           source: "src/tests/testdata/conversion/input",
           sourceFormats: testCase.sourceFormats,
           subdirectories: testCase.subdirectories,
@@ -284,11 +305,12 @@ describe("conversion", () => {
     }
   });
 
-  it("sfen", async () => {
+  it("merge", async () => {
     const testCases = [
       {
         appSettings: defaultAppSettings(),
         destination: "all.sfen",
+        enableUSIResign: false,
         expected: [
           "startpos moves 2g2f 3c3d 7g7f 5c5d 3i4h 8b5b 5i6h 5d5e 6h7h 3a4b 5g5f 4b3c 5f5e 3c4d 4h5g 4d5e P*5f 5e4d 4i5h",
           "startpos moves 2g2f 8c8d 2f2e 8d8e 6i7h 4a3b",
@@ -302,11 +324,9 @@ describe("conversion", () => {
         ],
       },
       {
-        appSettings: {
-          ...defaultAppSettings(),
-          enableUSIFileResign: true,
-        },
+        appSettings: defaultAppSettings(),
         destination: "all-noStartpos-resign.sfen",
+        enableUSIResign: true,
         expected: [
           "startpos moves 2g2f 3c3d 7g7f 5c5d 3i4h 8b5b 5i6h 5d5e 6h7h 3a4b 5g5f 4b3c 5f5e 3c4d 4h5g 4d5e P*5f 5e4d 4i5h",
           "startpos moves 2g2f 8c8d 2f2e 8d8e 6i7h 4a3b 3i3h 7a7b 2e2d 2c2d 2h2d P*2c 2d2f 6c6d 3g3f 3c3d 3h3g 5a4b 3g4f 2b4d 3f3e 3d3e 5i6i",
@@ -325,6 +345,7 @@ describe("conversion", () => {
           enableUSIFileStartpos: false,
         },
         destination: "all-noStartpos-resign.sfen",
+        enableUSIResign: false,
         expected: [
           "sfen lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1 moves 2g2f 3c3d 7g7f 5c5d 3i4h 8b5b 5i6h 5d5e 6h7h 3a4b 5g5f 4b3c 5f5e 3c4d 4h5g 4d5e P*5f 5e4d 4i5h",
           "sfen lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1 moves 2g2f 8c8d 2f2e 8d8e 6i7h 4a3b",
@@ -343,6 +364,7 @@ describe("conversion", () => {
       const destinationFullPath = path.join(tmpdir, testCase.destination);
       const result = await convertRecordFiles({
         ...defaultBatchConversionSettings(),
+        sourceType: SourceType.DIRECTORY,
         source: "src/tests/testdata/conversion/input",
         sourceFormats: [
           RecordFileFormat.KIF,
@@ -354,6 +376,7 @@ describe("conversion", () => {
         subdirectories: true,
         destinationType: DestinationType.SINGLE_FILE,
         singleFileDestination: destinationFullPath,
+        enableUSIResign: testCase.enableUSIResign,
       });
       expect(result).toStrictEqual({
         successTotal: 8,
@@ -375,6 +398,40 @@ describe("conversion", () => {
         .split(/\r?\n/)
         .sort();
       expect(list).toStrictEqual(testCase.expected);
+    }
+  });
+
+  it("division", async () => {
+    await saveAppSettings(defaultAppSettings());
+    const destinationFullPath = path.join(tmpdir, "sfen-to-ki2");
+    const result = await convertRecordFiles({
+      ...defaultBatchConversionSettings(),
+      sourceType: SourceType.SINGLE_FILE,
+      singleFileSource: "src/tests/testdata/conversion/division-input.sfen",
+      destinationType: DestinationType.SINGLE_FILE, // 入力が単一ファイルの場合は無効
+      destination: destinationFullPath,
+      destinationFormat: RecordFileFormat.KI2U,
+    });
+    expect(result).toStrictEqual({
+      successTotal: 3,
+      success: {},
+      failedTotal: 0,
+      failed: {},
+      skippedTotal: 0,
+      skipped: {},
+    });
+    const actualFilePaths = (await listFiles(destinationFullPath, Infinity)).sort();
+    const expectedFileNames = ["record_000001.ki2u", "record_000002.ki2u", "record_000003.ki2u"];
+    expect(actualFilePaths).toStrictEqual(
+      expectedFileNames.map((f) => path.join(destinationFullPath, f)),
+    );
+    for (const fileName of expectedFileNames) {
+      const expected = fs.readFileSync(
+        path.join("src/tests/testdata/conversion/output/sfen-to-ki2", fileName),
+        "utf-8",
+      );
+      const actual = fs.readFileSync(path.join(destinationFullPath, fileName), "utf-8");
+      expect(actual).toStrictEqual(expected);
     }
   });
 });

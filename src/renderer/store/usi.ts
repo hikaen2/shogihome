@@ -1,8 +1,8 @@
-import { USIInfoCommand } from "@/common/game/usi";
+import { USIInfoCommand } from "@/common/game/usi.js";
 import { Color, ImmutablePosition, Move, Position, formatMove } from "tsshogi";
-import { isActiveUSIPlayerSession } from "@/renderer/players/usi";
+import { isActiveUSIPlayerSession } from "@/renderer/players/usi.js";
 
-export type USIIteration = {
+export type USIInfo = {
   id: number;
   position: string;
   color: Color;
@@ -42,32 +42,41 @@ function formatPV(position: ImmutablePosition, pv: string[], maxLength: number):
   return result;
 }
 
-let nextIterationID = 0;
+let nextInfoID = 0;
 
 export class USIPlayerMonitor {
   public sfen = "";
   public nodes?: number;
   public nps?: number;
-  public iterations: USIIteration[] = [];
+  public infoList: USIInfo[] = [];
   public hashfull?: number;
   public currentMove?: string;
   public currentMoveText?: string;
   public ponderMove?: string;
+  public refreshOnNextUpdate = false;
 
   constructor(
     public sessionID: number,
     public name: string,
   ) {}
 
-  get latestIteration(): USIIteration[] {
-    const result: USIIteration[] = [];
+  /**
+   * Returns latest info group.
+   */
+  get latestInfo(): USIInfo[] {
+    const result: USIInfo[] = [];
     const multiPVSet = new Set();
     const moveSet = new Set();
-    for (const iteration of this.iterations) {
-      const move = iteration.pv ? iteration.pv[0] : undefined;
-      if (!multiPVSet.has(iteration.multiPV) && !moveSet.has(move)) {
-        result.push(iteration);
-        multiPVSet.add(iteration.multiPV);
+    for (const info of this.infoList) {
+      const move = info.pv ? info.pv[0] : undefined;
+      // Break if the same multiPV index is found twice.
+      if (move && multiPVSet.has(info.multiPV)) {
+        break;
+      }
+      multiPVSet.add(info.multiPV);
+      // Add the info if not already added.
+      if (!moveSet.has(move)) {
+        result.push(info);
         moveSet.add(move);
       }
     }
@@ -77,55 +86,57 @@ export class USIPlayerMonitor {
   }
 
   update(sfen: string, update: USIInfoCommand, maxPVTextLength: number, ponderMove?: Move): void {
-    if (this.sfen !== sfen) {
+    if (this.sfen !== sfen || this.refreshOnNextUpdate) {
       this.sfen = sfen;
       this.nodes = undefined;
       this.nps = undefined;
-      this.iterations = [];
+      this.infoList = [];
       this.hashfull = undefined;
       this.currentMove = undefined;
       this.currentMoveText = undefined;
       this.ponderMove = undefined;
+      this.refreshOnNextUpdate = false;
     }
     const position = Position.newBySFEN(sfen);
     if (!position) {
       return;
     }
-    const iteration: USIIteration = {
-      id: nextIterationID++,
+    const info: USIInfo = {
+      id: nextInfoID++,
       position: sfen,
       color: position.color,
     };
+    const baseInfoKeyCount = 3;
     if (update.depth !== undefined) {
-      iteration.depth = update.depth;
+      info.depth = update.depth;
     }
     if (update.seldepth !== undefined) {
-      iteration.selectiveDepth = update.seldepth;
+      info.selectiveDepth = update.seldepth;
     }
     if (update.timeMs !== undefined) {
-      iteration.timeMs = update.timeMs;
+      info.timeMs = update.timeMs;
     }
     if (update.nodes !== undefined) {
       this.nodes = update.nodes;
     }
     if (update.pv) {
-      iteration.pv = update.pv;
-      iteration.text = formatPV(position, update.pv, maxPVTextLength);
+      info.pv = update.pv;
+      info.text = formatPV(position, update.pv, maxPVTextLength);
     }
     if (update.multipv !== undefined) {
-      iteration.multiPV = update.multipv;
+      info.multiPV = update.multipv;
     }
     if (update.scoreCP !== undefined) {
-      iteration.score = update.scoreCP;
+      info.score = update.scoreCP;
     }
     if (update.scoreMate !== undefined) {
-      iteration.scoreMate = update.scoreMate;
+      info.scoreMate = update.scoreMate;
     }
     if (update.lowerbound !== undefined) {
-      iteration.lowerBound = update.lowerbound;
+      info.lowerBound = update.lowerbound;
     }
     if (update.upperbound !== undefined) {
-      iteration.upperBound = update.upperbound;
+      info.upperBound = update.upperbound;
     }
     if (update.currmove !== undefined) {
       this.currentMove = update.currmove;
@@ -141,17 +152,25 @@ export class USIPlayerMonitor {
       this.nps = update.nps;
     }
     if (update.string) {
-      iteration.text = update.string;
-    }
-    if (Object.keys(iteration).length !== 0) {
-      // USI プロトコルにおいて nodes は読み筋と関係なく定期的に送る事ができるとされている。
-      // ただ、多くのエンジンが読み筋と一緒に送ってくるため読み筋等がある場合にはそちらにも記録する。
-      if (update.nodes !== undefined) {
-        iteration.nodes = update.nodes;
-      }
-      this.iterations.unshift(iteration);
+      info.text = update.string;
     }
     this.ponderMove = ponderMove && formatMove(position, ponderMove);
+
+    // 要素が何もない場合はリストに登録しない。
+    if (Object.keys(info).length === baseInfoKeyCount) {
+      return;
+    }
+    // USI プロトコルにおいて nodes は読み筋と関係なく定期的に送る事ができるとされている。
+    // ただ、多くのエンジンが読み筋と一緒に送ってくるため読み筋等がある場合にはそちらにも記録する。
+    if (update.nodes !== undefined) {
+      info.nodes = update.nodes;
+    }
+
+    this.infoList.unshift(info);
+  }
+
+  endIteration() {
+    this.refreshOnNextUpdate = true;
   }
 }
 
@@ -211,6 +230,8 @@ export class USIMonitor {
       this._update(update);
     }
     this.updateQueue = [];
+
+    clearTimeout(this.timeoutHandle);
     this.timeoutHandle = undefined;
   }
 
@@ -229,5 +250,16 @@ export class USIMonitor {
       return a.sessionID - b.sessionID;
     });
     return monitor;
+  }
+
+  endIteration(sessionID: number) {
+    const monitor = this._sessions.find((session) => session.sessionID === sessionID);
+    if (monitor) {
+      // Invoke asynchronously to prevent IPC message delay.
+      setTimeout(() => {
+        this.dequeue(); // flush the queue
+        monitor.endIteration();
+      });
+    }
   }
 }

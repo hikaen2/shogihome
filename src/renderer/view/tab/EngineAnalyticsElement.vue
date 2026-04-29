@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="full column root" :class="{ paused }">
-      <div v-if="showHeader && canBePaused" class="overlay-control row reverse">
+      <div v-if="showHeader && isResearchSession" class="overlay-control row reverse">
         <button v-if="paused" @click="onUnpause">
           <Icon :icon="IconType.RESUME" />
           <span>{{ t.resume }}</span>
@@ -14,107 +14,161 @@
       <div v-if="showHeader" class="row headers">
         <div class="header">
           <span>{{ t.name }}: </span>
-          <span>{{ info.name }}</span>
+          <span>{{ monitor.name }}</span>
         </div>
         <div class="header">
           <span>{{ t.prediction }}: </span>
           <span>
-            {{ info.ponderMove ? info.ponderMove : "---" }}
+            {{ monitor.ponderMove ? monitor.ponderMove : "---" }}
           </span>
         </div>
         <div class="header">
           <span>{{ t.best }}: </span>
-          <span>{{ info.currentMoveText || "---" }}</span>
+          <span>{{ monitor.currentMoveText || "---" }}</span>
         </div>
         <div class="header">
           <span>NPS: </span>
-          <span>{{ info.nps || "---" }}</span>
+          <span>{{ (monitor.nps && formatNodeCount(monitor.nps)) || "---" }}</span>
         </div>
         <div class="header">
           <span>{{ t.nodes }}: </span>
-          <span>{{ info.nodes || "---" }}</span>
+          <span>{{ (monitor.nodes && formatNodeCount(monitor.nodes)) || "---" }}</span>
         </div>
-        <div class="header">
+        <div
+          class="header"
+          :class="{
+            warn: (monitor.hashfull || 0) >= 0.6,
+            danger: (monitor.hashfull || 0) >= 0.9,
+          }"
+        >
           <span>{{ t.hashUsage }}: </span>
-          <span>{{ info.hashfull ? (info.hashfull * 100).toFixed(1) : "---" }} %</span>
+          <span>{{ monitor.hashfull ? (monitor.hashfull * 100).toFixed(1) : "---" }} %</span>
         </div>
       </div>
       <div class="list-area" :style="{ height: `${height - (showHeader ? 22 : 0)}px` }">
         <table class="list">
-          <tr class="list-header">
-            <td v-if="showTimeColumn" class="time">{{ t.elapsed }}</td>
-            <td v-if="showMultiPvColumn" class="multipv-index">{{ t.rank }}</td>
-            <td v-if="showDepthColumn" class="depth">{{ t.depth }}</td>
-            <td v-if="showNodesColumn" class="nodes">{{ t.nodes }}</td>
-            <td v-if="showScoreColumn" class="score">{{ t.eval }}</td>
-            <td v-if="showScoreColumn" class="score-flag"></td>
-            <td class="text">{{ t.pv }}</td>
-          </tr>
-          <tr
-            v-for="iteration in historyMode ? info.iterations : info.latestIteration"
-            :key="iteration.id"
-            v-memo="[]"
-            class="list-item"
-            :class="{ highlight: enableHighlight && iteration.multiPV === 1 }"
-          >
-            <td v-if="showTimeColumn" class="time">
-              {{ iteration.timeMs ? (iteration.timeMs / 1e3).toFixed(1) + "s" : "" }}
-            </td>
-            <td v-if="showMultiPvColumn" class="multipv-index">
-              {{ iteration.multiPV || "" }}
-            </td>
-            <td v-if="showDepthColumn" class="depth">
-              {{ iteration.depth }}{{ iteration.selectiveDepth && iteration.depth ? "/" : ""
-              }}{{ iteration.selectiveDepth }}
-            </td>
-            <td v-if="showNodesColumn" class="nodes">
-              {{ iteration.nodes }}
-            </td>
-            <td v-if="showScoreColumn" class="score">
-              {{
-                iteration.scoreMate !== undefined
-                  ? getDisplayScore(iteration.scoreMate, iteration.color, evaluationViewFrom)
-                  : iteration.score !== undefined
-                    ? getDisplayScore(iteration.score, iteration.color, evaluationViewFrom)
-                    : ""
-              }}
-            </td>
-            <td v-if="showScoreColumn" class="score-flag">
-              {{ iteration.lowerBound ? "++" : "" }}
-              {{ iteration.upperBound ? "--" : "" }}
-              {{ iteration.scoreMate ? t.mateShort : "" }}
-            </td>
-            <td class="text">
-              <button
-                v-if="showPlayButton && iteration.pv && iteration.pv.length !== 0 && iteration.text"
-                @click="showPreview(iteration)"
+          <thead>
+            <tr ref="listHeader" class="list-header">
+              <td v-if="showTimeColumn" class="time" :style="columnStyleMap['time']">
+                {{ t.elapsed }}
+              </td>
+              <td
+                v-if="showMultiPvColumn"
+                class="multipv-index"
+                :style="columnStyleMap['multipv-index']"
               >
-                <Icon :icon="IconType.PLAY" />
-                <span>{{ t.displayPVShort }}</span>
-              </button>
-              {{ iteration.text }}
-            </td>
-          </tr>
+                {{ t.rank }}
+              </td>
+              <td v-if="showDepthColumn" class="depth" :style="columnStyleMap['depth']">
+                {{ t.depth }}
+              </td>
+              <td v-if="showNodesColumn" class="nodes" :style="columnStyleMap['nodes']">
+                {{ t.nodes }}
+              </td>
+              <td v-if="showScoreColumn" class="score" :style="columnStyleMap['score']">
+                {{ t.score }}
+              </td>
+              <td
+                v-if="showScoreColumn"
+                class="score-flag"
+                :style="columnStyleMap['score-flag']"
+              ></td>
+              <td class="text">{{ t.pv }}</td>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="info in historyMode ? monitor.infoList : monitor.latestInfo"
+              :key="info.id"
+              class="list-item"
+              :class="{ highlight: enableHighlight && info.multiPV === 1 }"
+            >
+              <td v-if="showTimeColumn" class="time">
+                {{ info.timeMs ? (info.timeMs / 1e3).toFixed(1) + "s" : "" }}
+              </td>
+              <td v-if="showMultiPvColumn" class="multipv-index">
+                {{ info.multiPV || "" }}
+              </td>
+              <td v-if="showDepthColumn" class="depth">
+                {{ info.depth
+                }}{{ info.selectiveDepth !== undefined && info.depth !== undefined ? "/" : ""
+                }}{{ info.selectiveDepth }}
+              </td>
+              <td v-if="showNodesColumn" class="nodes">
+                {{ info.nodes && formatNodeCount(info.nodes) }}
+              </td>
+              <td v-if="showScoreColumn" class="score">
+                {{
+                  info.scoreMate !== undefined
+                    ? getDisplayScore(info.scoreMate, info.color, evaluationViewFrom)
+                    : info.score !== undefined
+                      ? getDisplayScore(info.score, info.color, evaluationViewFrom)
+                      : ""
+                }}
+              </td>
+              <td v-if="showScoreColumn" class="score-flag">
+                {{ info.lowerBound ? "++" : "" }}
+                {{ info.upperBound ? "--" : "" }}
+                {{ info.scoreMate ? t.mateShort : "" }}
+              </td>
+              <td class="text">
+                <button
+                  v-if="showPlayButton && info.pv && info.pv.length !== 0 && info.text"
+                  @click="showPreview(info)"
+                >
+                  <Icon :icon="IconType.PLAY" />
+                  <span>{{ t.displayPVShort }}</span>
+                </button>
+                {{ info.text }}
+              </td>
+            </tr>
+          </tbody>
         </table>
+        <div
+          v-if="showSuggestionsCount && isResearchSession && !historyMode && multiPV"
+          class="multi-pv-control"
+        >
+          <span>{{ t.suggestionsCount }}</span>
+          <input
+            ref="multiPVInput"
+            type="number"
+            min="1"
+            :value="multiPV"
+            @input="updateMultiPV(0)"
+          />
+          <button @click="updateMultiPV(1)">
+            <Icon :icon="IconType.ARROW_DROP" /><span>+1</span>
+          </button>
+          <button @click="updateMultiPV(-1)">
+            <Icon :icon="IconType.ARROW_UP" /><span>-1</span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
+<script lang="ts">
+const suggestionsCountLimit = 10;
+let ignoreSuggestionsCountLimit = false;
+</script>
+
 <script setup lang="ts">
 import { t } from "@/common/i18n";
-import { USIIteration, USIPlayerMonitor } from "@/renderer/store/usi";
-import { computed } from "vue";
+import { USIInfo, USIPlayerMonitor } from "@/renderer/store/usi";
+import { computed, onBeforeUpdate, reactive, ref } from "vue";
 import { IconType } from "@/renderer/assets/icons";
 import Icon from "@/renderer/view/primitive/Icon.vue";
-import { EvaluationViewFrom } from "@/common/settings/app";
+import { EvaluationViewFrom, NodeCountFormat } from "@/common/settings/app";
 import { Color, Move, Position } from "tsshogi";
 import { useAppSettings } from "@/renderer/store/settings";
 import { useStore } from "@/renderer/store";
+import { readInputAsNumber } from "@/renderer/helpers/form";
+import { useConfirmationStore } from "@/renderer/store/confirm";
 
 const props = defineProps({
   historyMode: { type: Boolean, required: true },
-  info: { type: USIPlayerMonitor, required: true },
+  monitor: { type: USIPlayerMonitor, required: true },
   height: { type: Number, required: true },
   showHeader: { type: Boolean, default: true },
   showTimeColumn: { type: Boolean, default: true },
@@ -123,30 +177,70 @@ const props = defineProps({
   showNodesColumn: { type: Boolean, default: true },
   showScoreColumn: { type: Boolean, default: true },
   showPlayButton: { type: Boolean, default: true },
-  canBePaused: { type: Boolean, required: false, default: false },
+  showSuggestionsCount: { type: Boolean, default: true },
 });
 
 const store = useStore();
+const appSettings = useAppSettings();
+const listHeader = ref();
+const columnWidthMap = {} as { [key: string]: number };
+const columnStyleMap = reactive({} as { [key: string]: { minWidth: string } });
+const multiPVInput = ref();
+
+onBeforeUpdate(() => {
+  for (const column of (listHeader.value as HTMLElement).childNodes) {
+    if (column instanceof HTMLElement) {
+      const className = column.className;
+      const width = column.offsetWidth;
+      const oldWidth = columnWidthMap[className] || 0;
+      if (width > oldWidth) {
+        columnWidthMap[className] = width;
+        columnStyleMap[className] = { minWidth: `${width}px` };
+      }
+    }
+  }
+});
+
+const isResearchSession = computed(() => {
+  return store.isResearchEngineSessionID(props.monitor.sessionID);
+});
 
 const paused = computed(() => {
-  return store.isPausedResearchEngine(props.info.sessionID);
+  return store.isPausedResearchEngine(props.monitor.sessionID);
+});
+
+const formatNodeCount = computed(() => {
+  switch (appSettings.nodeCountFormat) {
+    case NodeCountFormat.COMMA_SEPARATED:
+      return (count: number) => count.toLocaleString();
+    case NodeCountFormat.COMPACT:
+      return Intl.NumberFormat("en-US", { notation: "compact" }).format;
+    case NodeCountFormat.JAPANESE:
+      return Intl.NumberFormat("ja-JP", { notation: "compact" }).format;
+    default:
+      return (count: number) => count.toString();
+  }
+});
+
+const multiPV = computed(() => {
+  return store.getResearchMultiPV(props.monitor.sessionID);
 });
 
 const enableHighlight = computed(() => {
   if (!props.historyMode) {
     return false;
   }
-  return props.info.iterations.some((iteration) => iteration.multiPV && iteration.multiPV !== 1);
+  return props.monitor.infoList.some((info) => info.multiPV && info.multiPV !== 1);
 });
 
 const evaluationViewFrom = computed(() => {
-  return useAppSettings().evaluationViewFrom;
+  return appSettings.evaluationViewFrom;
 });
 const getDisplayScore = (score: number, color: Color, evaluationViewFrom: EvaluationViewFrom) => {
   return evaluationViewFrom === EvaluationViewFrom.EACH || color == Color.BLACK ? score : -score;
 };
 
-const showPreview = (ite: USIIteration) => {
+const showPreview = (ite: USIInfo) => {
   const position = Position.newBySFEN(ite.position);
   if (!position) {
     return;
@@ -162,6 +256,7 @@ const showPreview = (ite: USIIteration) => {
   }
   useStore().showPVPreviewDialog({
     position,
+    engineName: props.monitor.name,
     multiPV: ite.multiPV,
     depth: ite.depth,
     selectiveDepth: ite.selectiveDepth,
@@ -174,11 +269,44 @@ const showPreview = (ite: USIIteration) => {
 };
 
 const onPause = () => {
-  store.pauseResearchEngine(props.info.sessionID);
+  store.pauseResearchEngine(props.monitor.sessionID);
 };
 
 const onUnpause = () => {
-  store.unpauseResearchEngine(props.info.sessionID);
+  store.unpauseResearchEngine(props.monitor.sessionID);
+};
+
+const updateMultiPV = (add: number) => {
+  const value = readInputAsNumber(multiPVInput.value);
+  if (!value) {
+    return;
+  }
+  const newValue = value + add;
+
+  // Confirm if the suggestions count is too large
+  if (
+    !ignoreSuggestionsCountLimit &&
+    multiPV.value &&
+    newValue > multiPV.value &&
+    newValue > suggestionsCountLimit
+  ) {
+    useConfirmationStore().show({
+      message: `${t.largeSuggestionsCountMayCausePerformanceDegradation} ${t.doYouReallyWantToIncreaseTheSuggestionsCount}`,
+      onOk: () => {
+        // Ignore the limit and update the value
+        ignoreSuggestionsCountLimit = true;
+        store.setResearchMultiPV(props.monitor.sessionID, newValue);
+      },
+      onCancel: () => {
+        // Restore the value
+        multiPVInput.value.value = multiPV.value?.toFixed(0) || "";
+      },
+    });
+    return;
+  }
+
+  // Otherwise, update the value
+  store.setResearchMultiPV(props.monitor.sessionID, newValue);
 };
 </script>
 
@@ -209,6 +337,12 @@ const onUnpause = () => {
 .header span {
   font-size: 12px;
   white-space: nowrap;
+}
+.header.warn {
+  background-color: var(--text-bg-color-warning);
+}
+.header.danger {
+  background-color: var(--text-bg-color-danger);
 }
 .list-area {
   width: 100%;
@@ -244,6 +378,7 @@ tr.list-item.highlight > td {
   border-bottom: dashed var(--text-separator-color) 1px;
 }
 table.list td {
+  box-sizing: border-box;
   border: 0;
   padding: 0;
   height: 100%;
@@ -292,5 +427,17 @@ button {
 }
 button span {
   line-height: 19px;
+}
+.multi-pv-control {
+  font-size: 12px;
+  text-align: left;
+}
+.multi-pv-control > * {
+  margin: 0px 0px 0px 5px;
+}
+.multi-pv-control input {
+  width: 40px;
+  font-size: 12px;
+  text-align: right;
 }
 </style>

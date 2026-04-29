@@ -1,5 +1,6 @@
-import { AnalysisSettings, CommentBehavior } from "@/common/settings/analysis";
-import { USIEngine } from "@/common/settings/usi";
+import { AnalysisSettings } from "@/common/settings/analysis.js";
+import { CommentBehavior } from "@/common/settings/comment.js";
+import { USIEngine } from "@/common/settings/usi.js";
 
 const engine: USIEngine = {
   uri: "es://usi/test-engine",
@@ -25,5 +26,6 @@ export const analysisSettings: AnalysisSettings = {
   perMoveCriteria: {
     maxSeconds: 1,
   },
+  descending: false,
   commentBehavior: CommentBehavior.APPEND,
 };

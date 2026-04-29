@@ -1,39 +1,41 @@
 <template>
-  <div>
-    <dialog ref="dialog" class="root">
+  <DialogFrame @cancel="onCancel">
+    <div class="root">
       <div class="title">{{ t.research }}</div>
       <div class="form-group">
         <PlayerSelector
-          :player-uri="engineURI"
+          v-model:player-uri="engineURI"
           :engines="engines"
-          :filter-label="USIEngineLabel.RESEARCH"
+          :default-tag="getPredefinedUSIEngineTag('research')"
           :display-thread-state="true"
           :display-multi-pv-state="true"
           @update-engines="onUpdatePlayerSettings"
-          @select-player="
-            (uri: string) => {
-              engineURI = uri;
-            }
-          "
         />
       </div>
-      <div v-for="(uri, index) in secondaryEngineURIs" :key="index" class="form-group">
+      <div v-for="(_, index) in secondaryEngineURIs" :key="index" class="form-group">
         <PlayerSelector
-          :player-uri="uri"
+          v-model:player-uri="secondaryEngineURIs[index]"
           :engines="engines"
-          :filter-label="USIEngineLabel.RESEARCH"
+          :default-tag="getPredefinedUSIEngineTag('research')"
           :display-thread-state="true"
           :display-multi-pv-state="true"
           @update-engines="onUpdatePlayerSettings"
-          @select-player="
-            (uri: string) => {
-              secondaryEngineURIs[index] = uri;
-            }
-          "
         />
         <button class="remove-button" @click="secondaryEngineURIs.splice(index, 1)">
           {{ t.remove }}
         </button>
+      </div>
+      <div v-if="cpuUsage > 1.0" class="form-group danger">
+        <div class="note">{{ t.totalNumberOfThreadsExceedsNPercentOfCpuCores(100) }}</div>
+      </div>
+      <div v-else-if="cpuUsage > 0.75" class="form-group warning">
+        <div class="note">{{ t.totalNumberOfThreadsExceedsNPercentOfCpuCores(75) }}</div>
+      </div>
+      <div v-if="memoryUsage > 1.0" class="form-group danger">
+        <div class="note">{{ t.totalUSIHashExceedsNPercentOfMemory(100) }}</div>
+      </div>
+      <div v-else-if="memoryUsage > 0.9" class="form-group warning">
+        <div class="note">{{ t.totalUSIHashExceedsNPercentOfMemory(90) }}</div>
       </div>
       <button class="center thin" @click="secondaryEngineURIs.push('')">
         <Icon :icon="IconType.ADD" />
@@ -41,24 +43,26 @@
       </button>
       <div class="form-group">
         <div class="form-item">
-          <ToggleButton
-            :value="enableMaxSeconds"
-            @change="
-              (value: boolean) => {
-                enableMaxSeconds = value;
-              }
-            "
-          />
-          <div class="form-item-small-label">{{ t.toPrefix }}</div>
+          <div class="form-item-label-wide">{{ t.timePerPosition }}</div>
+          <ToggleButton v-model:value="researchSettings.enableMaxSeconds" />
           <input
-            ref="maxSeconds"
-            :value="researchSettings.maxSeconds"
+            v-model.number="researchSettings.maxSeconds"
             class="number"
             type="number"
             min="1"
-            :disabled="!enableMaxSeconds"
+            :disabled="!researchSettings.enableMaxSeconds"
           />
-          <div class="form-item-small-label">{{ t.secondsSuffix }}{{ t.toSuffix }}</div>
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.suggestionsCount }}</div>
+          <ToggleButton v-model:value="researchSettings.overrideMultiPV" />
+          <input
+            v-model.number="researchSettings.multiPV"
+            class="number"
+            type="number"
+            min="1"
+            :disabled="!researchSettings.overrideMultiPV"
+          />
         </div>
       </div>
       <div class="main-buttons">
@@ -69,53 +73,56 @@
           {{ t.cancel }}
         </button>
       </div>
-    </dialog>
-  </div>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
 import { t } from "@/common/i18n";
-import { showModalDialog } from "@/renderer/helpers/dialog.js";
 import api from "@/renderer/ipc/api";
 import {
   defaultResearchSettings,
   ResearchSettings,
   validateResearchSettings,
 } from "@/common/settings/research";
-import { USIEngineLabel, USIEngines } from "@/common/settings/usi";
+import {
+  getPredefinedUSIEngineTag,
+  getUSIEngineOptionCurrentValue,
+  getUSIEngineThreads,
+  USIEngineMetadata,
+  USIEngines,
+  USIHash,
+} from "@/common/settings/usi";
 import { useStore } from "@/renderer/store";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import PlayerSelector from "@/renderer/view/dialog/PlayerSelector.vue";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
-import { readInputAsNumber } from "@/renderer/helpers/form";
 import ToggleButton from "@/renderer/view/primitive/ToggleButton.vue";
 import Icon from "@/renderer/view/primitive/Icon.vue";
 import { IconType } from "@/renderer/assets/icons";
 import { useErrorStore } from "@/renderer/store/error";
 import { useBusyState } from "@/renderer/store/busy";
+import DialogFrame from "./DialogFrame.vue";
+import { MachineSpec } from "@/common/advanced/monitor";
 
 const store = useStore();
 const busyState = useBusyState();
-const dialog = ref();
 const researchSettings = ref(defaultResearchSettings());
 const engines = ref(new USIEngines());
+const engineMetadataMap = reactive(new Map<string, USIEngineMetadata>());
 const engineURI = ref("");
 const secondaryEngineURIs = ref([] as string[]);
-const enableMaxSeconds = ref(false);
-const maxSeconds = ref();
+const machineSpec = ref<MachineSpec>({ cpuCores: 0, memory: 0 });
 
 busyState.retain();
 
 onMounted(async () => {
-  showModalDialog(dialog.value, onCancel);
-  installHotKeyForDialog(dialog.value);
   try {
     researchSettings.value = await api.loadResearchSettings();
     engines.value = await api.loadUSIEngines();
     engineURI.value = researchSettings.value.usi?.uri || "";
     secondaryEngineURIs.value =
       researchSettings.value.secondaries?.map((engine) => engine.usi?.uri || "") || [];
-    enableMaxSeconds.value = researchSettings.value.enableMaxSeconds;
+    machineSpec.value = await api.getMachineSpec();
   } catch (e) {
     useErrorStore().add(e);
     store.destroyModalDialog();
@@ -124,8 +131,56 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => {
-  uninstallHotKeyForDialog(dialog.value);
+watch(() => engineURI.value, loadMetadataIfNeeded);
+watch(
+  () => secondaryEngineURIs.value,
+  (uris) => {
+    for (const uri of uris) {
+      loadMetadataIfNeeded(uri);
+    }
+  },
+  { deep: true },
+);
+
+function loadMetadataIfNeeded(uri: string) {
+  const engine = engines.value.getEngine(uri);
+  if (uri && !engineMetadataMap.has(uri) && engine) {
+    api.getUSIEngineMetadata(engine.path).then((meta) => {
+      engineMetadataMap.set(uri, meta);
+    });
+  }
+}
+
+const cpuUsage = computed(() => {
+  let threadsSum = 0;
+  for (const uri of [engineURI.value, ...secondaryEngineURIs.value]) {
+    const engine = engines.value.getEngine(uri);
+    if (!engine) {
+      continue;
+    }
+    const threads = getUSIEngineThreads(engine);
+    const metadata = engineMetadataMap.get(uri);
+    if (typeof threads === "number" && metadata && !metadata.isShellScript) {
+      threadsSum += threads;
+    }
+  }
+  return threadsSum / machineSpec.value.cpuCores;
+});
+
+const memoryUsage = computed(() => {
+  let usiHashSum = 0;
+  for (const uri of [engineURI.value, ...secondaryEngineURIs.value]) {
+    const engine = engines.value.getEngine(uri);
+    if (!engine) {
+      continue;
+    }
+    const usiHash = getUSIEngineOptionCurrentValue(engine.options[USIHash]);
+    const metadata = engineMetadataMap.get(uri);
+    if (typeof usiHash === "number" && metadata && !metadata.isShellScript) {
+      usiHashSum += usiHash;
+    }
+  }
+  return (usiHashSum * 1024) / machineSpec.value.memory;
 });
 
 const onStart = () => {
@@ -137,18 +192,17 @@ const onStart = () => {
       usi: secondary,
     });
   }
-  const researchSettings: ResearchSettings = {
+  const newSettings: ResearchSettings = {
+    ...researchSettings.value,
     usi: engine,
     secondaries: secondaries,
-    enableMaxSeconds: enableMaxSeconds.value,
-    maxSeconds: readInputAsNumber(maxSeconds.value),
   };
-  const e = validateResearchSettings(researchSettings);
+  const e = validateResearchSettings(newSettings);
   if (e) {
     useErrorStore().add(e);
     return;
   }
-  store.startResearch(researchSettings);
+  store.startResearch(newSettings);
 };
 
 const onCancel = () => {

@@ -1,4 +1,4 @@
-import { RectSize } from "@/common/assets/geometry";
+import { RectSize } from "@/common/assets/geometry.js";
 import { PieceType } from "tsshogi";
 
 export type Frame = {
@@ -42,7 +42,7 @@ export type Layout = {
 };
 
 export type BoardBackground = {
-  gridImagePath: string;
+  gridColor: string;
   textureImagePath: string | null;
   style: { [key: string]: string };
 };
@@ -68,8 +68,7 @@ export type BoardSquare = {
 };
 
 export type Promotion = {
-  promoteImagePath: string;
-  notPromoteImagePath: string;
+  imagePath: string;
   style: { [key: string]: string };
 };
 
@@ -78,7 +77,8 @@ export type Board = {
   labels: BoardLabel[];
   pieces: BoardPiece[];
   squares: BoardSquare[];
-  promotion: Promotion | null;
+  promote: Promotion | null;
+  doNotPromote: Promotion | null;
 };
 
 export type HandPiece = {

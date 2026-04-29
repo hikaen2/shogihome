@@ -1,6 +1,6 @@
 <template>
   <div>
-    <dialog ref="dialog" class="menu">
+    <dialog v-if="!isInitialPositionMenuVisible && !isGameMenuVisible" ref="dialog" class="menu">
       <div class="group">
         <button data-hotkey="Escape" class="close" @click="onClose">
           <Icon :icon="IconType.CLOSE" />
@@ -11,6 +11,16 @@
         <button @click="onFlip">
           <Icon :icon="IconType.FLIP" />
           <div class="label">{{ t.flipBoard }}</div>
+        </button>
+      </div>
+      <div v-if="isMobileWebApp()" class="group">
+        <button v-if="states.game" @click="onGame">
+          <Icon :icon="IconType.GAME" />
+          <div class="label">{{ t.game }}</div>
+        </button>
+        <button v-if="states.stopGame" @click="onStopGame">
+          <Icon :icon="IconType.STOP" />
+          <div class="label">{{ t.stopGame }}</div>
         </button>
       </div>
       <div class="group">
@@ -92,17 +102,27 @@
           <Icon :icon="IconType.COPY" />
           <div class="label">{{ t.copyAsUSI }}</div>
         </button>
-        <button @click="onCopySFEN">
-          <Icon :icon="IconType.COPY" />
-          <div class="label">{{ t.copyAsSFEN }}</div>
-        </button>
         <button @click="onCopyUSEN">
           <Icon :icon="IconType.COPY" />
           <div class="label">{{ t.copyAsUSEN }}</div>
         </button>
+        <button @click="onCopySFEN">
+          <Icon :icon="IconType.COPY" />
+          <div class="label">{{ t.copyAsSFEN }}</div>
+        </button>
+        <button @click="onCopyBOD">
+          <Icon :icon="IconType.COPY" />
+          <div class="label">{{ t.copyAsBOD }}</div>
+        </button>
         <button :disabled="!states.paste" @click="onPaste">
           <Icon :icon="IconType.PASTE" />
           <div class="label">{{ t.paste }}</div>
+        </button>
+      </div>
+      <div v-if="isMobileWebApp()" class="group">
+        <button @click="onAppSettings">
+          <Icon :icon="IconType.SETTINGS" />
+          <div class="label">{{ t.appSettings }}</div>
         </button>
       </div>
       <div v-if="isMobileWebApp()" class="group">
@@ -113,6 +133,7 @@
       </div>
     </dialog>
     <InitialPositionMenu v-if="isInitialPositionMenuVisible" @close="emit('close')" />
+    <MobileGameMenu v-if="isGameMenuVisible" @close="emit('close')" />
   </div>
 </template>
 
@@ -130,15 +151,16 @@ import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/dev
 import { openCopyright } from "@/renderer/helpers/copyright";
 import { RecordFileFormat } from "@/common/file/record";
 import InitialPositionMenu from "@/renderer/view/menu/InitialPositionMenu.vue";
+import MobileGameMenu from "@/renderer/view/menu/MobileGameMenu.vue";
 
 const emit = defineEmits<{
   close: [];
 }>();
 
 const store = useStore();
-const appSettings = useAppSettings();
 const dialog = ref();
 const isInitialPositionMenuVisible = ref(false);
+const isGameMenuVisible = ref(false);
 const onClose = () => {
   emit("close");
 };
@@ -151,6 +173,13 @@ onBeforeUnmount(() => {
 });
 const onFlip = () => {
   useAppSettings().flipBoard();
+  emit("close");
+};
+const onGame = () => {
+  isGameMenuVisible.value = true;
+};
+const onStopGame = () => {
+  store.stopGame();
   emit("close");
 };
 const onNewFile = () => {
@@ -197,8 +226,9 @@ const onExportImage = () => {
   store.showExportBoardImageDialog();
   emit("close");
 };
-const onOpenAutoSaveDirectory = () => {
-  api.openExplorer(appSettings.autoSaveDirectory);
+const onOpenAutoSaveDirectory = async () => {
+  const gameSettings = await api.loadGameSettings();
+  api.openExplorer(gameSettings.autoSaveDirectory);
   emit("close");
 };
 const onCopyKIF = () => {
@@ -213,28 +243,38 @@ const onCopyCSA = () => {
   store.copyRecordCSA();
   emit("close");
 };
-const onCopyUSI = () => {
-  store.copyRecordUSIAll();
-  emit("close");
-};
-const onCopySFEN = () => {
-  store.copyBoardSFEN();
-  emit("close");
-};
 const onCopyJKF = () => {
   store.copyRecordJKF();
+  emit("close");
+};
+const onCopyUSI = () => {
+  store.copyRecordUSI("all");
   emit("close");
 };
 const onCopyUSEN = () => {
   store.copyRecordUSEN();
   emit("close");
 };
+const onCopySFEN = () => {
+  store.copyBoardSFEN();
+  emit("close");
+};
+const onCopyBOD = () => {
+  store.copyBoardBOD();
+  emit("close");
+};
 const onPaste = () => {
   store.showPasteDialog();
   emit("close");
 };
+const onAppSettings = () => {
+  store.showAppSettingsDialog();
+  emit("close");
+};
 const states = computed(() => {
   return {
+    game: store.appState === AppState.NORMAL,
+    stopGame: store.appState === AppState.GAME,
     newFile: store.appState === AppState.NORMAL,
     open: store.appState === AppState.NORMAL,
     save: store.appState === AppState.NORMAL,

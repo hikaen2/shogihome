@@ -4,7 +4,7 @@
 
 import { ArgumentsParser } from "@/command/common/arguments";
 import { LogLevel } from "@/common/log";
-import { Language } from "@/common/i18n";
+import { Language } from "@/common/i18n/index";
 const argParser = new ArgumentsParser("usi-csa-bridge", [
   "path/to/csa_game_config.yaml",
   "path/to/csa_game_config.json",
@@ -96,15 +96,16 @@ import {
   importCSAGameSettingsForCLI,
   validateCSAGameSettings,
 } from "@/common/settings/csa";
-import { Clock } from "@/renderer/store/clock";
-import { RecordManager } from "@/renderer/store/record";
-import { CSAGameManager, loginRetryIntervalSeconds } from "@/renderer/store/csa";
+import { Clock } from "@/renderer/game/clock";
+import { RecordManager } from "@/renderer/record/manager";
+import { CSAGameManager, loginRetryIntervalSeconds } from "@/renderer/game/csa";
 import { defaultPlayerBuilder } from "@/renderer/players/builder";
 import { getAppLogger } from "@/background/log";
-import { defaultRecordFileNameTemplate, generateRecordFileName } from "@/renderer/helpers/path";
+import { generateRecordFileName } from "@/renderer/helpers/path";
 import { RecordFileFormat } from "@/common/file/record";
 import { ordinal } from "@/common/helpers/string";
 import { exists } from "@/background/helpers/file";
+import { defaultRecordFileNameTemplate } from "@/common/file/path";
 
 // --------------------------------------------------------------------------------
 // Phase-4. コマンド固有の処理を実行します。
@@ -151,7 +152,9 @@ async function main() {
   }
 
   // CSAGameSettings に変換してバリデーションを実行します。
-  const settings = importCSAGameSettingsForCLI(cliSettings);
+  const settings = importCSAGameSettingsForCLI(cliSettings, {
+    autoSaveDirectory: recordDir(),
+  });
   const validationError = validateCSAGameSettings(settings);
   if (validationError) {
     getAppLogger().error(validationError);
@@ -162,12 +165,14 @@ async function main() {
   const blackClock = new Clock();
   const whiteClock = new Clock();
   const gameManager = new CSAGameManager(recordManager, blackClock, whiteClock);
-  const playerBuilder = defaultPlayerBuilder(engineTimeout());
+  const playerBuilder = defaultPlayerBuilder({
+    timeoutSeconds: engineTimeout(),
+  });
 
   gameManager
     .on("gameNext", onGameNext)
     .on("newGame", onNewGame)
-    .on("gameEnd", onGameEnd)
+    .on("closed", onClosed)
     .on("saveRecord", onSaveRecord)
     .on("loginRetry", onLoginRetry)
     .on("error", onError)
@@ -175,31 +180,27 @@ async function main() {
     .catch(onFatalError);
 
   function onGameNext() {
-    // eslint-disable-next-line no-console
     getAppLogger().info("waiting for new game...");
   }
 
   function onNewGame(n: number) {
-    // eslint-disable-next-line no-console
     getAppLogger().info(`${ordinal(n)} game started.`);
   }
 
-  function onGameEnd() {
-    // eslint-disable-next-line no-console
+  function onClosed() {
     getAppLogger().info("completed. will exit after some seconds...");
   }
 
   const returnCode = returnCodeName() === "CRLF" ? "\r\n" : "\n";
 
-  function onSaveRecord() {
-    const fileName = generateRecordFileName(
-      recordManager.record.metadata,
-      recordFileNameTemplate() ||
+  function onSaveRecord(dir: string) {
+    const fileName = generateRecordFileName(recordManager.record, {
+      template:
+        recordFileNameTemplate() ||
         cliSettings.recordFileNameTemplate ||
         defaultRecordFileNameTemplate,
-      recordFileFormat() || cliSettings.recordFileFormat || RecordFileFormat.KIF,
-    );
-    const dir = recordDir();
+      extension: recordFileFormat() || cliSettings.recordFileFormat || RecordFileFormat.KIF,
+    });
     const filePath = path.join(dir, fileName);
     fs.promises
       .mkdir(dir, { recursive: true })
@@ -223,7 +224,6 @@ async function main() {
   }
 
   function onLoginRetry() {
-    // eslint-disable-next-line no-console
     getAppLogger().warn(`Retry login after ${loginRetryIntervalSeconds} seconds...`);
   }
 

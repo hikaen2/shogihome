@@ -9,14 +9,14 @@
 <script setup lang="ts">
 import { RectSize } from "@/common/assets/geometry.js";
 import { useStore } from "@/renderer/store";
-import { RecordCustomData, SearchInfo } from "@/renderer/store/record";
+import { RecordCustomData, SearchInfo } from "@/renderer/record/manager";
 import { computed, onMounted, onUnmounted, PropType, ref, watch } from "vue";
 import { ActiveElement, Chart, ChartEvent, Color as ChartColor, ChartDataset } from "chart.js";
 import { Color, ImmutableNode, ImmutableRecord } from "tsshogi";
-import { scoreToPercentage } from "@/renderer/store/score";
+import { scoreToPercentage } from "@/renderer/record/score";
 import { Thema } from "@/common/settings/app";
 import { t } from "@/common/i18n";
-import { Lazy } from "@/renderer/helpers/lazy";
+import { Lazy } from "@/common/helpers/lazy";
 import { EvaluationChartType } from "@/common/settings/layout";
 
 const MATE_SCORE = 1000000;
@@ -268,6 +268,7 @@ const buildDatasets = (record: ImmutableRecord, config: ChartConfig) => {
 };
 
 const buildScalesOption = (record: ImmutableRecord, config: ChartConfig) => {
+  const stepSize = config.type === EvaluationChartType.RAW ? MAX_SCORE / 2 : 25;
   return {
     x: {
       min: 0,
@@ -278,7 +279,7 @@ const buildScalesOption = (record: ImmutableRecord, config: ChartConfig) => {
     y: {
       min: getMinScore(config.type),
       max: getMaxScore(config.type),
-      ticks: { color: config.palette.ticks },
+      ticks: { color: config.palette.ticks, stepSize },
       grid: { color: config.palette.grid },
     },
   };
@@ -289,9 +290,9 @@ const updateChart = (config: ChartConfig) => {
   chart.options.color = config.palette.main;
   chart.options.scales = buildScalesOption(store.record, config);
   chart.options.plugins = {
-    legend: {
-      display: config.showLegend,
-    },
+    legend: { display: config.showLegend },
+    title: { display: false },
+    tooltip: { enabled: false },
   };
   chart.update();
 };
@@ -325,18 +326,28 @@ const updateChartLazy = () => {
 
 onMounted(() => {
   const element = canvas.value as HTMLCanvasElement;
-  const context = element.getContext("2d") as CanvasRenderingContext2D;
+  const context = element.getContext("2d", { desynchronized: true }) as CanvasRenderingContext2D;
   chart = new Chart(context, {
     type: "scatter",
     data: {
       datasets: [],
     },
     options: {
-      animation: {
-        duration: 0,
-      },
+      animation: false,
       responsive: true,
       maintainAspectRatio: false,
+      resizeDelay: 100,
+      parsing: false,
+      normalized: true,
+      interaction: {
+        mode: "nearest",
+      },
+      elements: {
+        point: {
+          hitRadius: 0,
+          hoverRadius: 0,
+        },
+      },
       events: ["click"],
       onClick,
     },

@@ -1,9 +1,9 @@
-import api, { API } from "@/renderer/ipc/api";
-import { PieceImageType, Tab, TabPaneType, Thema } from "@/common/settings/app";
-import { createAppSettings } from "@/renderer/store/settings";
+import api, { API } from "@/renderer/ipc/api.js";
+import { PieceImageType, Tab, TabPaneType, Thema } from "@/common/settings/app.js";
+import { createAppSettings } from "@/renderer/store/settings.js";
 import { Mocked } from "vitest";
 
-vi.mock("@/renderer/ipc/api");
+vi.mock("@/renderer/ipc/api.js");
 
 const mockAPI = api as Mocked<API>;
 
@@ -53,7 +53,7 @@ describe("store/index", () => {
 
     const store = createAppSettings();
     expect(store.thema).toBe(Thema.STANDARD);
-    expect(store.pieceImage).toBe(PieceImageType.HITOMOJI);
+    expect(store.pieceImage).toBe(PieceImageType.HITOMOJI_WOOD);
 
     const ret = store.setTemporaryUpdate({
       thema: Thema.DARK,
@@ -74,7 +74,7 @@ describe("store/index", () => {
     expect(mockAPI.cropPieceImage).toBeCalledWith("file:///test", false);
 
     store.clearTemporaryUpdate();
-    expect(store.pieceImage).toBe(PieceImageType.HITOMOJI);
+    expect(store.pieceImage).toBe(PieceImageType.HITOMOJI_WOOD);
     expect(store.pieceImageFileURL).toBeUndefined();
     expect(store.croppedPieceImageBaseURL).toBeUndefined();
   });

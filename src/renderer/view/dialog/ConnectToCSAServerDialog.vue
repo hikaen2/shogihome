@@ -1,14 +1,14 @@
 <template>
-  <div>
-    <dialog ref="dialog" class="root">
+  <DialogFrame @cancel="onCancel">
+    <div class="root">
       <div class="title">{{ t.connectToCSAServer }}({{ t.adminMode }})</div>
       <div class="form-group">
         <div class="form-item">
           <div class="form-item-label-wide">{{ t.host }}</div>
           <input ref="host" class="long-text" list="csa-server-host" type="text" />
           <datalist id="csa-server-host">
-            <option value="gserver.computer-shogi.org"></option>
-            <option value="wdoor.c.u-tokyo.ac.jp"></option>
+            <option :value="officialCSAServerDomain"></option>
+            <option :value="floodgateDomain"></option>
             <option value="localhost"></option>
             <option value="127.0.0.1"></option>
           </datalist>
@@ -32,15 +32,11 @@
         </div>
         <div class="form-item">
           <div class="form-item-label-wide">{{ t.password }}</div>
-          <input ref="password" class="long-text" type="password" />
+          <input ref="password" class="long-text" :type="revealPassword ? 'text' : 'password'" />
         </div>
         <div class="form-item">
           <div class="form-item-label-wide"></div>
-          <ToggleButton
-            :label="t.revealPassword"
-            :value="false"
-            @change="onTogglePasswordVisibility"
-          />
+          <ToggleButton v-model:value="revealPassword" :label="t.revealPassword" />
         </div>
       </div>
       <div class="form-group warning">
@@ -59,43 +55,30 @@
           {{ t.cancel }}
         </button>
       </div>
-    </dialog>
-  </div>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
 import { PromptTarget } from "@/common/advanced/prompt";
 import { t } from "@/common/i18n";
 import { CSAProtocolVersion, validateCSAServerSettings } from "@/common/settings/csa";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
-import { showModalDialog } from "@/renderer/helpers/dialog";
 import api from "@/renderer/ipc/api";
 import { useStore } from "@/renderer/store";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { ref } from "vue";
 import ToggleButton from "@/renderer/view/primitive/ToggleButton.vue";
 import { useAppSettings } from "@/renderer/store/settings";
 import { Tab } from "@/common/settings/app";
 import { useErrorStore } from "@/renderer/store/error";
+import { floodgateDomain, officialCSAServerDomain } from "@/common/game/csa";
+import DialogFrame from "./DialogFrame.vue";
 
 const store = useStore();
-const dialog = ref();
 const host = ref();
 const port = ref();
 const id = ref();
 const password = ref();
-
-onMounted(() => {
-  showModalDialog(dialog.value, onCancel);
-  installHotKeyForDialog(dialog.value);
-});
-
-onBeforeUnmount(() => {
-  uninstallHotKeyForDialog(dialog.value);
-});
-
-const onTogglePasswordVisibility = (value: boolean) => {
-  password.value.type = value ? "text" : "password";
-};
+const revealPassword = ref(false);
 
 const onStart = () => {
   const settings = {

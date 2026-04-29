@@ -3,53 +3,68 @@ import {
   app,
   BrowserWindow,
   clipboard,
+  dialog,
   Menu,
   MenuItem,
   MenuItemConstructorOptions,
   shell,
 } from "electron";
-import { openAutoSaveDirectory, openSettingsDirectory } from "@/background/settings";
-import { getTailCommand, openLogFile, openLogsDirectory, tailLogFile } from "@/background/log";
+import {
+  openAutoSaveDirectory,
+  openAutoSaveDirectoryForCSA,
+  openSettingsDirectory,
+} from "@/background/settings.js";
+import {
+  getTailCommand,
+  getFilePath as getLogFilePath,
+  getRootDir as getRootLogDir,
+  tailLogFile,
+} from "@/background/log.js";
 import {
   onMenuEvent,
   onUpdateAppState,
   sendError,
+  sendMessage,
   updateAppSettings,
-} from "@/background/window/ipc";
-import { MenuEvent } from "@/common/control/menu";
-import { AppState, ResearchState } from "@/common/control/state";
-import { openHowToUse, openLatestReleasePage, openStableReleasePage, openWebsite } from "./help";
-import { t } from "@/common/i18n";
+} from "@/background/window/ipc.js";
+import { getBookInfo } from "@/background/book/index.js";
+import { defaultBookSession } from "@/common/book.js";
+import { MenuEvent } from "@/common/control/menu.js";
+import { AppState } from "@/common/control/state.js";
+import { openHowToUse, openLatestReleasePage, openStableReleasePage, openWebsite } from "./help.js";
+import { t } from "@/common/i18n/index.js";
 import { InitialPositionSFEN } from "tsshogi";
-import { getAppPath } from "@/background/proc/env";
-import { openBackupDirectory } from "@/background/file/history";
-import { openCacheDirectory } from "@/background/image/cache";
-import { refreshCustomPieceImages, sendTestNotification } from "./debug";
-import { LogType } from "@/common/log";
-import { createLayoutManagerWindow } from "./layout";
-import { licenseURL, thirdPartyLicenseURL } from "@/common/links/github";
-import { materialIconsGuideURL } from "@/common/links/google";
+import { getAppPath } from "@/background/proc/path-electron.js";
+import { chromiumLicensePath, electronLicensePath } from "@/background/proc/path.js";
+import { openCacheDirectory } from "@/background/image/cache.js";
+import { refreshCustomPieceImages, sendTestNotification } from "./debug.js";
+import { LogType } from "@/common/log.js";
+import { createLayoutManagerWindow } from "./layout.js";
+import { licenseURL, thirdPartyLicenseURL } from "@/common/links/github.js";
+import { materialIconsGuideURL } from "@/common/links/google.js";
+import { openPath } from "@/background/helpers/electron.js";
+import { createMonitorWindow } from "./monitor.js";
+import { createListItems } from "@/common/message.js";
+import { BoardLayoutType } from "@/common/settings/layout.js";
+import { getCPUInfo } from "@/background/proc/state.js";
+import { outputStatsHTML } from "@/background/stats/html.js";
 
 const isWin = process.platform === "win32";
 const isMac = process.platform === "darwin";
 
-const stateChangeCallbacks: ((
-  appState: AppState,
-  researchState: ResearchState,
-  busy: boolean,
-) => void)[] = [];
+const stateChangeCallbacks: ((appState: AppState, busy: boolean) => void)[] = [];
 
 function menuItem(
   label: string,
   event: MenuEvent,
-  appStates: (AppState | ResearchState)[] | null,
+  appStates: AppState[] | null,
   accelerator?: string,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ...args: any[]
 ): MenuItemConstructorOptions {
   const index = stateChangeCallbacks.length;
   const id = "menuItem" + index;
-  stateChangeCallbacks.push((appState: AppState, researchState: ResearchState, busy: boolean) => {
+  stateChangeCallbacks.push((appState: AppState, busy: boolean) => {
     const menu = Menu.getApplicationMenu();
     if (!menu) {
       return;
@@ -60,9 +75,9 @@ function menuItem(
     }
     item.enabled = busy
       ? false
-      : !appStates || appStates.length === 0
-        ? true
-        : !!appStates.find((value) => value === appState || value === researchState);
+      : appStates?.length
+        ? !!appStates.find((value) => value === appState)
+        : true;
   });
   return {
     id,
@@ -72,18 +87,36 @@ function menuItem(
   };
 }
 
+let fullScreenNotiSent = false;
+
 function createMenuTemplate(window: BrowserWindow) {
   const menuTemplate: Array<MenuItemConstructorOptions | MenuItem> = [
     {
       label: t.file,
       submenu: [
-        menuItem(t.newRecord, MenuEvent.NEW_RECORD, [AppState.NORMAL], "CmdOrCtrl+N"),
+        menuItem(
+          t.newRecordKeepInitialPosition,
+          MenuEvent.NEW_RECORD,
+          [AppState.NORMAL],
+          "CmdOrCtrl+N",
+        ),
+        menuItem(
+          t.newRecordHirateSetup,
+          MenuEvent.NEW_RECORD_HIRATE_SETUP,
+          [AppState.NORMAL],
+          "CmdOrCtrl+Shift+N",
+        ),
         menuItem(t.openRecord, MenuEvent.OPEN_RECORD, [AppState.NORMAL], "CmdOrCtrl+O"),
         menuItem(t.saveRecord, MenuEvent.SAVE_RECORD, [AppState.NORMAL], "CmdOrCtrl+S"),
         menuItem(t.saveRecordAs, MenuEvent.SAVE_RECORD_AS, [AppState.NORMAL], "CmdOrCtrl+Shift+S"),
         menuItem(t.history, MenuEvent.HISTORY, [AppState.NORMAL], "CmdOrCtrl+H"),
         { type: "separator" },
-        menuItem(t.loadRecordFromWeb, MenuEvent.LOAD_REMOTE_RECORD, [AppState.NORMAL]),
+        menuItem(
+          t.loadRecordFromWeb,
+          MenuEvent.LOAD_REMOTE_RECORD,
+          [AppState.NORMAL],
+          "CmdOrCtrl+Shift+O",
+        ),
         { type: "separator" },
         menuItem(t.batchConversion, MenuEvent.BATCH_CONVERSION, [AppState.NORMAL]),
         menuItem(t.share, MenuEvent.SHARE, [AppState.NORMAL]),
@@ -95,8 +128,21 @@ function createMenuTemplate(window: BrowserWindow) {
         ),
         { type: "separator" },
         {
-          label: t.openAutoSaveDirectory,
-          click: openAutoSaveDirectory,
+          label: `${t.openAutoSaveDirectory}`,
+          submenu: [
+            {
+              label: t.offlineGame,
+              click: () => {
+                openAutoSaveDirectory().catch(sendError);
+              },
+            },
+            {
+              label: t.csaOnlineGame,
+              click: () => {
+                openAutoSaveDirectoryForCSA().catch(sendError);
+              },
+            },
+          ],
         },
         { type: "separator" },
         isMac ? { role: "close", label: t.close } : { role: "quit", label: t.quit },
@@ -106,7 +152,7 @@ function createMenuTemplate(window: BrowserWindow) {
       label: t.editing,
       submenu: [
         {
-          label: t.copyRecord,
+          label: t.copyRecordAll,
           submenu: [
             menuItem(t.asKIF, MenuEvent.COPY_RECORD, null, isMac ? undefined : "CmdOrCtrl+C"),
             menuItem(t.asKI2, MenuEvent.COPY_RECORD_KI2, null),
@@ -117,13 +163,41 @@ function createMenuTemplate(window: BrowserWindow) {
             menuItem(t.asUSEN, MenuEvent.COPY_RECORD_USEN, null),
           ],
         },
-        menuItem(t.copyPositionAsSFEN, MenuEvent.COPY_BOARD_SFEN, null),
+        {
+          label: t.copyRecordFromCurrentPosition,
+          submenu: [
+            menuItem(t.asKIF, MenuEvent.COPY_RECORD_FROM_CURRENT_POSITION, null),
+            menuItem(t.asKI2, MenuEvent.COPY_RECORD_KI2_FROM_CURRENT_POSITION, null),
+            menuItem(t.asCSA, MenuEvent.COPY_RECORD_CSA_FROM_CURRENT_POSITION, null),
+            menuItem(t.asUSI, MenuEvent.COPY_RECORD_USI_FROM_CURRENT_POSITION, null),
+            menuItem(t.asJSONKifuFormat, MenuEvent.COPY_RECORD_JKF_FROM_CURRENT_POSITION, null),
+            menuItem(t.asUSEN, MenuEvent.COPY_RECORD_USEN_FROM_CURRENT_POSITION, null),
+          ],
+        },
+        {
+          label: t.copyPosition,
+          submenu: [
+            menuItem(t.asSFEN, MenuEvent.COPY_BOARD_SFEN, null),
+            menuItem(t.asBOD, MenuEvent.COPY_BOARD_BOD, null),
+          ],
+        },
         menuItem(
           t.pasteRecordOrPosition,
           MenuEvent.PASTE_RECORD,
           [AppState.NORMAL],
           isMac ? undefined : "CmdOrCtrl+V",
         ),
+        {
+          label: t.pasteRecordMerge,
+          submenu: [
+            menuItem(t.toRootPosition, MenuEvent.PASTE_RECORD_MERGE_INTO_ROOT_POSITION, [
+              AppState.NORMAL,
+            ]),
+            menuItem(t.toCurrentPosition, MenuEvent.PASTE_RECORD_MERGE_INTO_CURRENT_POSITION, [
+              AppState.NORMAL,
+            ]),
+          ],
+        },
         { type: "separator" },
         {
           label: t.addSpecialMove,
@@ -150,6 +224,10 @@ function createMenuTemplate(window: BrowserWindow) {
           "CmdOrCtrl+D",
         ),
         { type: "separator" },
+        menuItem(t.searchDuplicatePositions, MenuEvent.SEARCH_DUPLICATE_POSITIONS, [
+          AppState.NORMAL,
+        ]),
+        { type: "separator" },
         menuItem(t.startPositionSetup, MenuEvent.START_POSITION_EDITING, [AppState.NORMAL]),
         menuItem(t.completePositionSetup, MenuEvent.END_POSITION_EDITING, [
           AppState.POSITION_EDITING,
@@ -159,7 +237,7 @@ function createMenuTemplate(window: BrowserWindow) {
           label: t.initializePosition,
           submenu: [
             menuItem(
-              t.nonHandicap,
+              t.noHandicap,
               MenuEvent.INIT_POSITION,
               [AppState.POSITION_EDITING],
               undefined,
@@ -251,9 +329,10 @@ function createMenuTemplate(window: BrowserWindow) {
             ),
           ],
         },
+        menuItem(t.changePieceSet, MenuEvent.CHANGE_PIECE_SET, [AppState.POSITION_EDITING]),
         // NOTE:
         //   Mac ではこれらのショートカットがメニューに無いとテキスト編集時のショートカット操作ができない。
-        //   https://github.com/sunfish-shogi/electron-shogi/issues/694
+        //   https://github.com/sunfish-shogi/shogihome/issues/694
         { type: "separator", visible: isMac },
         { role: "copy", accelerator: "CmdOrCtrl+C", visible: isMac },
         { role: "paste", accelerator: "CmdOrCtrl+V", visible: isMac },
@@ -269,20 +348,20 @@ function createMenuTemplate(window: BrowserWindow) {
         menuItem(t.game, MenuEvent.START_GAME, [AppState.NORMAL], "CmdOrCtrl+G"),
         menuItem(t.csaOnlineGame, MenuEvent.START_CSA_GAME, [AppState.NORMAL]),
         { type: "separator" },
-        menuItem(t.interrupt, MenuEvent.STOP_GAME, [AppState.GAME]),
+        menuItem(t.interrupt, MenuEvent.STOP_GAME, [AppState.GAME, AppState.PARALLEL_GAME]),
         menuItem(t.resign, MenuEvent.RESIGN, [AppState.GAME, AppState.CSA_GAME]),
         menuItem(t.winByDeclaration, MenuEvent.WIN, [AppState.GAME, AppState.CSA_GAME]),
         { type: "separator" },
         menuItem(t.logout, MenuEvent.LOGOUT, [AppState.CSA_GAME]),
         { type: "separator" },
         menuItem(t.calculateJishogiPoints, MenuEvent.CALCULATE_POINTS, null),
+        menuItem(t.displayGameResults, MenuEvent.DISPLAY_GAME_RESULTS, [AppState.GAME]),
       ],
     },
     {
       label: t.research,
       submenu: [
-        menuItem(t.startResearch, MenuEvent.START_RESEARCH, [ResearchState.IDLE], "CmdOrCtrl+R"),
-        menuItem(t.endResearch, MenuEvent.STOP_RESEARCH, [ResearchState.RUNNING]),
+        menuItem(t.startEndResearch, MenuEvent.TOGGLE_RESEARCH, null, "CmdOrCtrl+R"),
         { type: "separator" },
         menuItem(
           t.analyze,
@@ -307,6 +386,64 @@ function createMenuTemplate(window: BrowserWindow) {
       ],
     },
     {
+      label: t.book,
+      submenu: [
+        menuItem(t.clear, MenuEvent.RESET_BOOK, [AppState.NORMAL]),
+        menuItem(t.open, MenuEvent.OPEN_BOOK_FILE, [AppState.NORMAL]),
+        menuItem(t.saveAs, MenuEvent.SAVE_BOOK_FILE, [AppState.NORMAL]),
+        {
+          label: t.export,
+          submenu: [
+            menuItem(`${t.yane2016BookFile} (.db)`, MenuEvent.EXPORT_BOOK_AS_YANE2016, [
+              AppState.NORMAL,
+            ]),
+            menuItem(`${t.aperyBookFile} (.bin)`, MenuEvent.EXPORT_BOOK_AS_APERY, [
+              AppState.NORMAL,
+            ]),
+            menuItem(`${t.shogiGUIBookFile} (.sbk)`, MenuEvent.EXPORT_BOOK_AS_SBK, [
+              AppState.NORMAL,
+            ]),
+          ],
+        },
+        menuItem(t.addMoves, MenuEvent.ADD_BOOK_MOVES, [AppState.NORMAL]),
+        { type: "separator" },
+        {
+          label: t.bookInfo,
+          click: () => {
+            try {
+              const info = getBookInfo(defaultBookSession);
+              const formatLabel =
+                info.format === "yane2016"
+                  ? `${t.yane2016BookFile} (.db)`
+                  : info.format === "apery"
+                    ? `${t.aperyBookFile} (.bin)`
+                    : `${t.shogiGUIBookFile} (.sbk)`;
+              const items: { text: string }[] = [
+                { text: `${t.format}: ${formatLabel}` },
+                { text: `${t.loadingMode}: ${info.type}` },
+              ];
+              if (info.path) {
+                items.push({ text: `${t.file}: ${info.path}` });
+              }
+              if (info.entryCount !== undefined) {
+                items.push({ text: `${t.positionCount}: ${info.entryCount}` });
+              }
+              if (info.unsaved) {
+                items.push({ text: t.unsaved });
+              }
+              sendMessage({
+                text: t.bookInfo,
+                attachments: [{ type: "list", items }],
+                withCopyButton: true,
+              });
+            } catch (e) {
+              sendError(e instanceof Error ? e : new Error(String(e)));
+            }
+          },
+        },
+      ],
+    },
+    {
       label: t.view,
       submenu: [
         {
@@ -317,18 +454,69 @@ function createMenuTemplate(window: BrowserWindow) {
           accelerator: "CmdOrCtrl+L",
         },
         {
+          label: t.openMonitorWindow,
+          click: () => {
+            createMonitorWindow(window);
+          },
+        },
+        {
+          type: "separator",
+        },
+        menuItem(t.elapsedTimeChart, MenuEvent.ELAPSED_TIME_CHART, [AppState.NORMAL]),
+        {
           type: "separator",
         },
         {
-          label: t.toggleFullScreen,
-          role: "togglefullscreen",
+          label: t.boardLayout,
+          submenu: [
+            {
+              label: t.standard,
+              click: () => {
+                updateAppSettings({ boardLayoutType: BoardLayoutType.STANDARD });
+              },
+              accelerator: "CmdOrCtrl+1",
+            },
+            {
+              label: t.compact,
+              click: () => {
+                updateAppSettings({ boardLayoutType: BoardLayoutType.COMPACT });
+              },
+              accelerator: "CmdOrCtrl+2",
+            },
+            {
+              label: t.portrait,
+              click: () => {
+                updateAppSettings({ boardLayoutType: BoardLayoutType.PORTRAIT });
+              },
+              accelerator: "CmdOrCtrl+3",
+            },
+          ],
         },
+        {
+          type: "separator",
+        },
+        isMac
+          ? {
+              label: t.toggleFullScreen,
+              role: "togglefullscreen",
+            }
+          : {
+              label: t.toggleFullScreen,
+              click: () => {
+                const enable = !window.isFullScreen();
+                window.setFullScreen(enable);
+                if (enable && !fullScreenNotiSent) {
+                  sendMessage({ text: t.youCanExitFullScreenByPressing("F11") });
+                  fullScreenNotiSent = true;
+                }
+              },
+              accelerator: "F11",
+            },
         menuItem(t.flipBoard, MenuEvent.FLIP_BOARD, null, "CmdOrCtrl+T"),
         {
           label: t.defaultFontSize,
           click: () => {
-            window.webContents.setZoomLevel(0);
-            window.getChildWindows().forEach((child) => {
+            BrowserWindow.getAllWindows().forEach((child) => {
               child.webContents.setZoomLevel(0);
             });
           },
@@ -338,8 +526,7 @@ function createMenuTemplate(window: BrowserWindow) {
           label: t.increaseFontSize,
           click: () => {
             const level = window.webContents.getZoomLevel() + 1;
-            window.webContents.setZoomLevel(level);
-            window.getChildWindows().forEach((child) => {
+            BrowserWindow.getAllWindows().forEach((child) => {
               child.webContents.setZoomLevel(level);
             });
           },
@@ -349,8 +536,7 @@ function createMenuTemplate(window: BrowserWindow) {
           label: t.decreaseFontSize,
           click: () => {
             const level = window.webContents.getZoomLevel() - 1;
-            window.webContents.setZoomLevel(level);
-            window.getChildWindows().forEach((child) => {
+            BrowserWindow.getAllWindows().forEach((child) => {
               child.webContents.setZoomLevel(level);
             });
           },
@@ -371,28 +557,38 @@ function createMenuTemplate(window: BrowserWindow) {
         {
           label: t.app,
           click: () => {
-            shell.openPath(path.dirname(getAppPath("exe")));
+            openPath(path.dirname(getAppPath("exe"))).catch(sendError);
           },
         },
         {
           label: t.settings,
-          click: openSettingsDirectory,
+          click: () => {
+            openSettingsDirectory().catch(sendError);
+          },
         },
         {
           label: t.log,
-          click: openLogsDirectory,
+          click: () => {
+            openPath(getRootLogDir()).catch(sendError);
+          },
         },
         {
           label: t.cache,
-          click: openCacheDirectory,
+          click: () => {
+            openCacheDirectory().catch(sendError);
+          },
         },
         {
-          label: t.backup,
-          click: openBackupDirectory,
+          label: `${t.autoSaving} (Local)`,
+          click: () => {
+            openAutoSaveDirectory().catch(sendError);
+          },
         },
         {
-          label: t.autoSaving,
-          click: openAutoSaveDirectory,
+          label: `${t.autoSaving} (CSA)`,
+          click: () => {
+            openAutoSaveDirectoryForCSA().catch(sendError);
+          },
         },
       ],
     },
@@ -407,24 +603,31 @@ function createMenuTemplate(window: BrowserWindow) {
           type: "separator",
         },
         {
+          label: t.openMonitorWindow,
+          click: () => {
+            createMonitorWindow(window);
+          },
+          accelerator: "CmdOrCtrl+Shift+M",
+        },
+        {
           label: t.logFile,
           submenu: [
             {
               label: t.openAppLog,
               click: () => {
-                openLogFile(LogType.APP);
+                openPath(getLogFilePath(LogType.APP)).catch(sendError);
               },
             },
             {
               label: t.openUSILog,
               click: () => {
-                openLogFile(LogType.USI);
+                openPath(getLogFilePath(LogType.USI)).catch(sendError);
               },
             },
             {
               label: t.openCSALog,
               click: () => {
-                openLogFile(LogType.CSA);
+                openPath(getLogFilePath(LogType.CSA)).catch(sendError);
               },
             },
             {
@@ -493,6 +696,80 @@ function createMenuTemplate(window: BrowserWindow) {
           label: t.notificationTest,
           click: sendTestNotification,
         },
+        {
+          type: "separator",
+        },
+        {
+          label: t.statisticsReport,
+          click: () => {
+            outputStatsHTML().catch(sendError);
+          },
+        },
+        {
+          label: "CPU Information",
+          click: async () => {
+            const cpu = await getCPUInfo();
+            sendMessage({
+              text: "CPU Information",
+              attachments: [
+                {
+                  type: "list",
+                  items: [
+                    { text: `Architecture: ${cpu.architecture}` },
+                    { text: `Available: ${cpu.availableCores} cores` },
+                    ...Object.entries(cpu.cores).map(([model, count]) => ({
+                      text: `${model} (${count} cores)`,
+                    })),
+                  ],
+                },
+              ],
+              withCopyButton: true,
+            });
+          },
+        },
+        {
+          label: "GPU Information",
+          click: () => {
+            app.getGPUInfo("complete").then((gpuInfo) => {
+              if (!(gpuInfo instanceof Object)) {
+                sendError(new Error("GPU Information is not an object"));
+                return;
+              }
+              sendMessage({
+                text: "GPU Information",
+                attachments: [{ type: "list", items: createListItems(gpuInfo) }],
+                withCopyButton: true,
+              });
+            });
+          },
+        },
+        {
+          label: "GPU Feature Status",
+          click: () => {
+            const status = app.getGPUFeatureStatus();
+            sendMessage({
+              text: "GPU Feature Status",
+              attachments: [{ type: "list", items: createListItems(status) }],
+              withCopyButton: true,
+            });
+          },
+        },
+        { type: "separator" },
+        {
+          label: "Forced Shutdown",
+          click: () => {
+            dialog
+              .showMessageBox({
+                message: "Are you sure you want to force shutdown?",
+                buttons: ["Yes", "No"],
+              })
+              .then((result) => {
+                if (result.response === 0) {
+                  app.exit(1);
+                }
+              });
+          },
+        },
       ],
     },
     {
@@ -508,7 +785,9 @@ function createMenuTemplate(window: BrowserWindow) {
         },
         {
           label: t.openLatestReleasePage,
-          click: openLatestReleasePage,
+          click: () => {
+            openLatestReleasePage().catch(sendError);
+          },
         },
         {
           label: t.openStableReleasePage,
@@ -540,15 +819,13 @@ function createMenuTemplate(window: BrowserWindow) {
             {
               label: "Electron",
               click: () => {
-                shell.openPath(path.join(path.dirname(getAppPath("exe")), "LICENSE.electron.txt"));
+                openPath(electronLicensePath).catch(sendError);
               },
             },
             {
               label: "Chromium",
               click: () => {
-                shell.openPath(
-                  path.join(path.dirname(getAppPath("exe")), "LICENSES.chromium.html"),
-                );
+                openPath(chromiumLicensePath).catch(sendError);
               },
             },
           ],

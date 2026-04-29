@@ -1,7 +1,7 @@
 /* eslint-disable no-console,no-restricted-imports */
 import fs from "node:fs";
 import { createInterface } from "node:readline/promises";
-import { Releases } from "../src/background/version/types";
+import { Releases } from "../src/common/version";
 import * as semver from "semver";
 
 const releaseJSON = "docs/release.json";
@@ -32,13 +32,13 @@ async function getTarget(): Promise<Target> {
 
 async function inputPlatforms(): Promise<string[]> {
   const paths = [] as string[];
-  if (!(await stdio.question(`Do you want to update ${releaseWinJSON}? [Y/n]:`)).match(/^n/i)) {
+  if (!/^n/i.test(await stdio.question(`Do you want to update ${releaseWinJSON}? [Y/n]:`))) {
     paths.push(releaseWinJSON);
   }
-  if (!(await stdio.question(`Do you want to update ${releaseMacJSON}? [Y/n]:`)).match(/^n/i)) {
+  if (!/^n/i.test(await stdio.question(`Do you want to update ${releaseMacJSON}? [Y/n]:`))) {
     paths.push(releaseMacJSON);
   }
-  if (!(await stdio.question(`Do you want to update ${releaseLinuxJSON}? [Y/n]:`)).match(/^n/i)) {
+  if (!/^n/i.test(await stdio.question(`Do you want to update ${releaseLinuxJSON}? [Y/n]:`))) {
     paths.push(releaseLinuxJSON);
   }
   return paths;
@@ -77,12 +77,12 @@ async function updateReleaseJSON(target: Target) {
   releases.stable = {
     version: stable,
     tag: `v${stable}`,
-    link: `https://github.com/sunfish-shogi/electron-shogi/releases/tag/v${stable}`,
+    link: `https://github.com/sunfish-shogi/shogihome/releases/tag/v${stable}`,
   };
   releases.latest = {
     version: latest,
     tag: `v${latest}`,
-    link: `https://github.com/sunfish-shogi/electron-shogi/releases/tag/v${latest}`,
+    link: `https://github.com/sunfish-shogi/shogihome/releases/tag/v${latest}`,
   };
   const json = JSON.stringify(releases, null, 1);
   fs.writeFileSync(releaseJSON, json);

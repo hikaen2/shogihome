@@ -1,5 +1,6 @@
-import { USIEngine, validateUSIEngine } from "./usi";
-import * as uri from "@/common/uri";
+import { t } from "@/common/i18n/index.js";
+import { USIEngine, validateUSIEngine } from "./usi.js";
+import * as uri from "@/common/uri.js";
 
 export type PlayerSettings = {
   name: string;
@@ -9,7 +10,7 @@ export type PlayerSettings = {
 
 export function defaultPlayerSettings(): PlayerSettings {
   return {
-    name: "人",
+    name: t.human,
     uri: uri.ES_HUMAN,
   };
 }
@@ -29,5 +30,11 @@ export function validatePlayerSettings(settings: PlayerSettings): Error | undefi
     if (usiError) {
       return usiError;
     }
+  } else if (uri.isBasicEngine(settings.uri)) {
+    if (!uri.ES_BASIC_ENGINE_LIST.some((uri) => uri === settings.uri)) {
+      return new Error("invalid player URI");
+    }
+  } else if (settings.uri !== uri.ES_HUMAN) {
+    return new Error("invalid player URI");
   }
 }

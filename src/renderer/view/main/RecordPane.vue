@@ -1,32 +1,47 @@
 <template>
-  <div ref="root" class="full column record-pane">
+  <div ref="root" class="column record-pane">
     <div class="auto record">
       <RecordView
         :record="store.record"
+        :position-counts="positionCounts"
         :operational="isRecordOperational"
         :show-comment="showComment"
         :show-elapsed-time="showElapsedTime"
-        :elapsed-time-toggle-label="t.elapsedTime"
-        :comment-toggle-label="t.commentsAndBookmarks"
+        :sub-area-toggle-label="t.book"
         :opacity="appSettings.enableTransparent ? appSettings.recordOpacity : 1"
         :show-top-control="showTopControl"
         :show-bottom-control="showBottomControl"
         :show-branches="showBranches"
+        :shortcut-keys="getRecordShortcutKeys(appSettings.recordShortcutKeys)"
+        :branch-list-mode="appSettings.branchListMode"
         @go-begin="store.changePly(0)"
         @go-back="store.goBack()"
         @go-forward="store.goForward()"
         @go-end="store.changePly(Number.MAX_SAFE_INTEGER)"
         @select-move="(ply) => store.changePly(ply)"
         @select-branch="(index) => store.changeBranch(index)"
+        @select-next-branch="selectNextBranch"
+        @back-to-main-branch="store.backToMainBranch()"
         @swap-with-previous-branch="store.swapWithPreviousBranch()"
         @swap-with-next-branch="store.swapWithNextBranch()"
+        @show-duplicate-positions="showDuplicatePositions"
         @toggle-show-elapsed-time="onToggleElapsedTime"
         @toggle-show-comment="onToggleComment"
-      />
+      >
+        <template #sub-area>
+          <BookPanel class="full" />
+        </template>
+      </RecordView>
     </div>
     <div v-if="store.remoteRecordFileURL">
       <button class="wide" @click="store.loadRemoteRecordFile()">{{ t.fetchLatestData }}</button>
     </div>
+    <DuplicatePositionsDialog
+      v-if="store.appState === AppState.NORMAL && duplicatePositionsDialog"
+      :sfen="duplicatePositionsDialog"
+      @select="changeNode"
+      @close="duplicatePositionsDialog = ''"
+    />
   </div>
 </template>
 
@@ -45,6 +60,10 @@ import {
   uninstallHotKeyForMainWindow,
 } from "@/renderer/devices/hotkey";
 import { useAppSettings } from "@/renderer/store/settings";
+import BookPanel from "./BookPanel.vue";
+import { getRecordShortcutKeys } from "@/renderer/view/primitive/board/shortcut";
+import DuplicatePositionsDialog from "@/renderer/view/dialog/DuplicatePositionsDialog.vue";
+import { ImmutableNode } from "tsshogi";
 
 defineProps({
   showElapsedTime: {
@@ -75,6 +94,7 @@ defineProps({
 const store = useStore();
 const appSettings = useAppSettings();
 const root = ref();
+const duplicatePositionsDialog = ref("");
 
 onMounted(() => {
   installHotKeyForMainWindow(root.value);
@@ -83,6 +103,25 @@ onMounted(() => {
 onBeforeUnmount(() => {
   uninstallHotKeyForMainWindow(root.value);
 });
+
+const positionCounts = computed(() =>
+  appSettings.liveDuplicatePositionDetection ? store.positionCounts : undefined,
+);
+const isRecordOperational = computed(() => store.appState === AppState.NORMAL);
+
+const showDuplicatePositions = (sfen: string) => {
+  duplicatePositionsDialog.value = sfen;
+};
+
+const selectNextBranch = (index: number) => {
+  store.goForward();
+  store.changeBranch(index);
+};
+
+const changeNode = (node: ImmutableNode) => {
+  store.changeNode(node);
+  duplicatePositionsDialog.value = "";
+};
 
 const onToggleElapsedTime = (enabled: boolean) => {
   appSettings.updateAppSettings({
@@ -95,10 +134,6 @@ const onToggleComment = (enabled: boolean) => {
     showCommentInRecordView: enabled,
   });
 };
-
-const isRecordOperational = computed(() => {
-  return store.appState === AppState.NORMAL;
-});
 </script>
 
 <style scoped>

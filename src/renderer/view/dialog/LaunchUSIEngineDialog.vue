@@ -1,16 +1,15 @@
 <template>
-  <div>
-    <dialog ref="dialog" class="root">
+  <DialogFrame @cancel="onCancel">
+    <div class="root">
       <div class="title">{{ t.launchUSIEngine }}({{ t.adminMode }})</div>
       <div class="form-group">
         <div>{{ t.searchEngine }}</div>
         <PlayerSelector
-          :player-uri="engineURI"
+          v-model:player-uri="engineURI"
           :engines="engines"
           :display-thread-state="true"
           :display-multi-pv-state="true"
           @update-engines="onUpdatePlayerSettings"
-          @select-player="onSelectPlayer"
         />
       </div>
       <div class="form-group warning">
@@ -29,16 +28,14 @@
           {{ t.cancel }}
         </button>
       </div>
-    </dialog>
-  </div>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
 import { t } from "@/common/i18n";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
-import { showModalDialog } from "@/renderer/helpers/dialog";
 import { useStore } from "@/renderer/store";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import PlayerSelector from "./PlayerSelector.vue";
 import { USIEngines } from "@/common/settings/usi";
 import api from "@/renderer/ipc/api";
@@ -47,19 +44,17 @@ import { PromptTarget } from "@/common/advanced/prompt";
 import { Tab } from "@/common/settings/app";
 import { useErrorStore } from "@/renderer/store/error";
 import { useBusyState } from "@/renderer/store/busy";
+import DialogFrame from "./DialogFrame.vue";
 
 const store = useStore();
 const busyState = useBusyState();
 const appSettings = useAppSettings();
-const dialog = ref();
 const engines = ref(new USIEngines());
 const engineURI = ref("");
 
 busyState.retain();
 
 onMounted(async () => {
-  showModalDialog(dialog.value, onCancel);
-  installHotKeyForDialog(dialog.value);
   try {
     engines.value = await api.loadUSIEngines();
   } catch (e) {
@@ -70,17 +65,15 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => {
-  uninstallHotKeyForDialog(dialog.value);
-});
-
 const onStart = async () => {
   const settings = engines.value.getEngine(engineURI.value);
   if (!settings) {
     useErrorStore().add(t.engineNotSelected);
     return;
   }
-  const sessionID = await api.usiLaunch(settings, appSettings.engineTimeoutSeconds);
+  const sessionID = await api.usiLaunch(settings, {
+    timeoutSeconds: appSettings.engineTimeoutSeconds,
+  });
   api.openPrompt(PromptTarget.USI, sessionID, settings.name);
   useAppSettings().updateAppSettings({ tab: Tab.MONITOR });
   store.closeModalDialog();
@@ -92,10 +85,6 @@ const onCancel = () => {
 
 const onUpdatePlayerSettings = async (val: USIEngines) => {
   engines.value = val;
-};
-
-const onSelectPlayer = (uri: string) => {
-  engineURI.value = uri;
 };
 </script>
 

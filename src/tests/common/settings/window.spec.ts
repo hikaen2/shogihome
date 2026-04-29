@@ -1,4 +1,4 @@
-import { buildWindowSettings, normalizeWindowSettings } from "@/common/settings/window";
+import { buildWindowSettings, normalizeWindowSettings } from "@/common/settings/window.js";
 
 describe("settings/window", () => {
   it("buildWindowSettings", () => {
@@ -70,5 +70,19 @@ describe("settings/window", () => {
     };
     const result = normalizeWindowSettings(settings);
     expect(result).toStrictEqual(settings);
+
+    expect(
+      normalizeWindowSettings({
+        width: 0,
+        height: 0,
+        maximized: false,
+        fullscreen: false,
+      }),
+    ).toEqual({
+      width: 200,
+      height: 150,
+      maximized: false,
+      fullscreen: false,
+    });
   });
 });

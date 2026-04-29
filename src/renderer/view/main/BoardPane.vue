@@ -3,20 +3,28 @@
     <BoardView
       :layout-type="layoutType || appSettings.boardLayoutType"
       :board-image-type="appSettings.boardImage"
+      :custom-board-image-url="
+        appSettings.boardImageFileURL && fileURLToCustomSchemeURL(appSettings.boardImageFileURL)
+      "
+      :board-image-opacity="appSettings.enableTransparent ? appSettings.boardOpacity : 1"
+      :board-grid-color="appSettings.boardGridColor || undefined"
       :piece-stand-image-type="appSettings.pieceStandImage"
+      :custom-piece-stand-image-url="
+        appSettings.pieceStandImageFileURL &&
+        fileURLToCustomSchemeURL(appSettings.pieceStandImageFileURL)
+      "
+      :piece-stand-image-opacity="appSettings.enableTransparent ? appSettings.pieceStandOpacity : 1"
+      :promotion-selector-style="appSettings.promotionSelectorStyle"
       :board-label-type="appSettings.boardLabelType"
       :piece-image-url-template="getPieceImageURLTemplate(appSettings)"
       :king-piece-type="appSettings.kingPieceType"
-      :custom-board-image-url="appSettings.boardImageFileURL"
-      :custom-piece-stand-image-url="appSettings.pieceStandImageFileURL"
-      :board-image-opacity="appSettings.enableTransparent ? appSettings.boardOpacity : 1"
-      :piece-stand-image-opacity="appSettings.enableTransparent ? appSettings.pieceStandOpacity : 1"
       :max-size="maxSize"
       :position="store.record.position"
       :last-move="lastMove"
       :candidates="store.candidates"
       :flip="appSettings.boardFlipping"
       :hide-clock="store.appState !== AppState.GAME && store.appState !== AppState.CSA_GAME"
+      :mobile="isMobileWebApp()"
       :allow-move="store.isMovableByUser"
       :allow-edit="store.appState === AppState.POSITION_EDITING"
       :black-player-name="blackPlayerName"
@@ -25,7 +33,7 @@
       :black-player-byoyomi="clock?.black.byoyomi"
       :white-player-time="clock?.white.time"
       :white-player-byoyomi="clock?.white.byoyomi"
-      :next-move-label="t.nextTurn"
+      :drop-shadows="!isMobileWebApp()"
       @resize="onResize"
       @move="onMove"
       @edit="onEdit"
@@ -58,7 +66,7 @@ import { useStore } from "@/renderer/store";
 import ControlPane, { ControlGroup } from "@/renderer/view/main/ControlPane.vue";
 import { AppState } from "@/common/control/state.js";
 import { humanPlayer } from "@/renderer/players/human";
-import { CSAGameState } from "@/renderer/store/csa";
+import { CSAGameState } from "@/renderer/game/csa";
 import { useAppSettings } from "@/renderer/store/settings";
 import {
   RightSideControlType,
@@ -66,6 +74,8 @@ import {
   getPieceImageURLTemplate,
 } from "@/common/settings/app";
 import { BoardLayoutType } from "@/common/settings/layout";
+import { isMobileWebApp } from "@/renderer/ipc/api";
+import { fileURLToCustomSchemeURL } from "@/common/url";
 
 defineProps({
   maxSize: {

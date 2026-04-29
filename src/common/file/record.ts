@@ -1,4 +1,4 @@
-import { decodeText, encodeText } from "@/common/helpers/encode";
+import { decodeText, encodeText } from "@/common/helpers/encode.js";
 import {
   ImmutableRecord,
   Record,
@@ -22,9 +22,21 @@ export enum RecordFileFormat {
   JKF = ".jkf",
 }
 
+export function getStandardRecordFileFormats() {
+  return [
+    RecordFileFormat.KIF,
+    RecordFileFormat.KIFU,
+    RecordFileFormat.KI2,
+    RecordFileFormat.KI2U,
+    RecordFileFormat.CSA,
+    RecordFileFormat.JKF,
+  ];
+}
+
 export function detectRecordFileFormatByPath(path: string): RecordFileFormat | undefined {
+  const lowerCase = path.toLowerCase();
   for (const ext of Object.values(RecordFileFormat)) {
-    if (path.toLowerCase().endsWith(ext)) {
+    if (lowerCase.endsWith(ext)) {
       return ext;
     }
   }
@@ -73,6 +85,7 @@ export type ExportOptions = {
   returnCode?: string;
   detectGarbled?: boolean;
   csa?: CSAOptions;
+  useUTF8ForKifAndKi2?: boolean;
 };
 
 export type ExportResult = {
@@ -85,7 +98,10 @@ export function exportRecordAsBuffer(
   format: RecordFileFormat,
   opt: ExportOptions,
 ): ExportResult {
-  const encoding = getRecommendedEncodingByFileFormat(format);
+  const encoding =
+    opt.useUTF8ForKifAndKi2 && (format === RecordFileFormat.KIF || format === RecordFileFormat.KI2)
+      ? "UTF8"
+      : getRecommendedEncodingByFileFormat(format);
   let str: string;
   switch (format) {
     case RecordFileFormat.KIF:
@@ -117,8 +133,3 @@ export function exportRecordAsBuffer(
   }
   return { data, garbled };
 }
-
-export type InitialRecordFileRequest = {
-  path: string;
-  ply?: number;
-} | null;

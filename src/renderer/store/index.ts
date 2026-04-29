@@ -1,11 +1,10 @@
-import api from "@/renderer/ipc/api";
+import api, { isNative } from "@/renderer/ipc/api.js";
 import {
   Color,
   exportCSA,
   ImmutableRecord,
   Move,
   PositionChange,
-  Record,
   formatSpecialMove,
   exportKIF,
   RecordMetadataKey,
@@ -20,11 +19,14 @@ import {
   JishogiDeclarationRule,
   countJishogiPoint,
   Position,
+  exportBOD,
+  InitialPositionType,
+  ImmutableNode,
 } from "tsshogi";
 import { reactive, UnwrapNestedRefs } from "vue";
-import { GameSettings } from "@/common/settings/game";
-import { ClockSoundTarget, Tab, TextDecodingRule } from "@/common/settings/app";
-import { beepShort, beepUnlimited, playPieceBeat, stopBeep } from "@/renderer/devices/audio";
+import { defaultGameSettings, GameSettings } from "@/common/settings/game.js";
+import { ClockSoundTarget, Tab, TextDecodingRule } from "@/common/settings/app.js";
+import { beepShort, beepUnlimited, playPieceBeat, stopBeep } from "@/renderer/devices/audio.js";
 import {
   RecordManager,
   SearchInfoSenderType,
@@ -33,39 +35,52 @@ import {
   UpdateCustomDataHandler,
   PieceSet,
   UpdateTreeHandler,
-} from "./record";
-import { calculateGameStatistics, GameManager, GameResults } from "./game";
-import { generateRecordFileName, join } from "@/renderer/helpers/path";
-import { ResearchSettings } from "@/common/settings/research";
-import { USIPlayerMonitor, USIMonitor } from "./usi";
-import { AppState, ResearchState } from "@/common/control/state";
-import { Attachment, ListItem, useMessageStore } from "./message";
-import * as uri from "@/common/uri";
-import { AnalysisManager } from "./analysis";
-import { AnalysisSettings, CommentBehavior } from "@/common/settings/analysis";
-import { MateSearchSettings } from "@/common/settings/mate";
-import { LogLevel } from "@/common/log";
-import { CSAGameManager, CSAGameState } from "./csa";
-import { Clock } from "./clock";
-import { CSAGameSettings, appendCSAGameSettingsHistory } from "@/common/settings/csa";
-import { defaultPlayerBuilder } from "@/renderer/players/builder";
-import { USIInfoCommand } from "@/common/game/usi";
-import { ResearchManager } from "./research";
-import { SearchInfo } from "@/renderer/players/player";
-import { useAppSettings } from "./settings";
-import { t } from "@/common/i18n";
-import { MateSearchManager } from "./mate";
-import { detectUnsupportedRecordProperties } from "@/renderer/helpers/record";
-import { RecordFileFormat, detectRecordFileFormatByPath } from "@/common/file/record";
-import { setOnUpdateUSIInfoHandler, setOnUpdateUSIPonderInfoHandler } from "@/renderer/players/usi";
-import { useErrorStore } from "./error";
-import { useBusyState } from "./busy";
-import { Confirmation, useConfirmationStore } from "./confirm";
-import { LayoutProfile, LayoutProfileList } from "@/common/settings/layout";
-import { clearURLParams, loadRecordForWebApp, saveRecordForWebApp } from "./webapp";
+} from "@/renderer/record/manager.js";
+import { GameManager } from "@/renderer/game/game.js";
+import { calculateGameStatistics, GameResults, SPRTSummary } from "@/renderer/game/result.js";
+import { CSAGameManager, CSAGameState } from "@/renderer/game/csa.js";
+import { Clock } from "@/renderer/game/clock.js";
+import { generateRecordFileName, join } from "@/renderer/helpers/path.js";
+import { ResearchSettings } from "@/common/settings/research.js";
+import { USIPlayerMonitor, USIMonitor } from "./usi.js";
+import { AppState, ResearchState } from "@/common/control/state.js";
+import { useMessageStore } from "./message.js";
+import { AnalysisManager } from "./analysis.js";
+import { AnalysisSettings } from "@/common/settings/analysis.js";
+import { MateSearchSettings } from "@/common/settings/mate.js";
+import { LogLevel } from "@/common/log.js";
+import { CSAGameSettings, appendCSAGameSettingsHistory } from "@/common/settings/csa.js";
+import { defaultPlayerBuilder } from "@/renderer/players/builder.js";
+import { USIInfoCommand } from "@/common/game/usi.js";
+import { ResearchManager } from "./research.js";
+import { SearchInfo } from "@/renderer/players/player.js";
+import { useAppSettings } from "./settings.js";
+import { t } from "@/common/i18n/index.js";
+import { MateSearchManager } from "./mate.js";
+import { detectUnsupportedRecordProperties } from "@/renderer/helpers/record.js";
+import {
+  RecordFileFormat,
+  detectRecordFileFormatByPath,
+  getStandardRecordFileFormats,
+} from "@/common/file/record.js";
+import { setOnStartSearchHandler, setOnUpdateUSIInfoHandler } from "@/renderer/players/usi.js";
+import { useErrorStore } from "./error.js";
+import { useBusyState } from "./busy.js";
+import { Confirmation, useConfirmationStore } from "./confirm.js";
+import { LayoutProfile } from "@/common/settings/layout.js";
+import { clearURLParams, loadRecordForWebApp, saveRecordForWebApp } from "./webapp.js";
+import { CommentBehavior } from "@/common/settings/comment.js";
+import { Attachment, ListItem } from "@/common/message.js";
+import { ParallelGameManager, ParallelGameProgress } from "@/renderer/game/parallel.js";
+
+type CandidateMove = {
+  move: Move;
+  score?: number; // 手番側視点の数値スコア（showArrowScore が有効な場合のみ設定）
+};
 
 export type PVPreview = {
   position: ImmutablePosition;
+  engineName?: string;
   multiPV?: number;
   depth?: number;
   selectiveDepth?: number;
@@ -76,49 +91,62 @@ export type PVPreview = {
   pv: Move[];
 };
 
-function getMessageAttachmentsByGameResults(results: GameResults): Attachment[] {
+function getMessageAttachmentsByGameResults(
+  results: GameResults,
+  sprtSummary?: SPRTSummary,
+): Attachment[] {
   const statistics = calculateGameStatistics(results);
-  return [
+  const items: ListItem[] = [
     {
-      type: "list",
-      items: [
-        {
-          text: results.player1.name,
-          children: [`${t.wins}: ${results.player1.win}`],
-        },
-        {
-          text: results.player2.name,
-          children: [`${t.wins}: ${results.player2.win}`],
-        },
-        { text: `${t.draws}: ${results.draw}` },
-        { text: `${t.validGames}: ${results.total - results.invalid}` },
-        { text: `${t.invalidGames}: ${results.invalid}` },
-        {
-          text: `${t.eloRatingDiff} (${t.ignoreDraws})`,
-          children: [
-            `${statistics.rating.toFixed(2)}`,
-            `95% CI: [${statistics.ratingLower.toFixed(1)}, ${statistics.ratingUpper.toFixed(1)}]`,
-          ],
-        },
-        {
-          text: `${t.eloRatingDiff} (${t.drawCountAsHalfWins})`,
-          children: [
-            `${statistics.ratingWithDraw.toFixed(2)}`,
-            `95% CI: [${statistics.ratingWithDrawLower.toFixed(1)}, ${statistics.ratingWithDrawUpper.toFixed(1)}]`,
-          ],
-        },
-        {
-          text: "二項検定",
-          children: [
-            `np > 5: ${statistics.npIsGreaterThan5 ? "True" : "False"}`,
-            `${t.zValue}: ${statistics.zValue.toFixed(2)}`,
-            `${t.significance5pc}: ${statistics.significance5pc ? "True" : "False"}`,
-            `${t.significance1pc}: ${statistics.significance1pc ? "True" : "False"}`,
-          ],
-        },
+      text: results.player1.name,
+      children: [
+        `${t.wins}: ${results.player1.win}`,
+        `${t.winsOnBlack}: ${results.player1.winBlack}`,
+        `${t.winsOnWhite}: ${results.player1.winWhite}`,
+      ],
+    },
+    {
+      text: results.player2.name,
+      children: [
+        `${t.wins}: ${results.player2.win}`,
+        `${t.winsOnBlack}: ${results.player2.winBlack}`,
+        `${t.winsOnWhite}: ${results.player2.winWhite}`,
+      ],
+    },
+    { text: `${t.draws}: ${results.draw}` },
+    { text: `${t.validGames}: ${results.total - results.invalid}` },
+    { text: `${t.invalidGames}: ${results.invalid}` },
+    {
+      text: `${t.eloRatingDiff} (${t.ignoreDraws})`,
+      children: [
+        `${statistics.rating.toFixed(2)}`,
+        `95% CI: [${statistics.ratingLower.toFixed(1)}, ${statistics.ratingUpper.toFixed(1)}]`,
       ],
     },
   ];
+  if (sprtSummary) {
+    items.push({
+      text: "SPRT",
+      children: [
+        `Elo0=${sprtSummary.elo0.toFixed(2)}, Elo1=${sprtSummary.elo1.toFixed(2)}`,
+        `alpha=${sprtSummary.alpha}, beta=${sprtSummary.beta}`,
+        `5-nomial=[${sprtSummary.pentanomial.loseLose}, ${sprtSummary.pentanomial.loseDraw}, ${sprtSummary.pentanomial.drawDrawOrWinLose}, ${sprtSummary.pentanomial.winDraw}, ${sprtSummary.pentanomial.winWin}]`,
+        `LLR=${sprtSummary.llr.toFixed(4)} [${sprtSummary.lowerBound.toFixed(4)}, ${sprtSummary.upperBound.toFixed(4)}]`,
+        sprtSummary.result,
+      ],
+    });
+  } else {
+    items.push({
+      text: "二項検定", // TODO: i18n
+      children: [
+        `np > 5: ${statistics.npIsGreaterThan5 ? "True" : "False"}`,
+        `${t.zValue}: ${statistics.zValue.toFixed(2)}`,
+        `${t.significance5pc}: ${statistics.significance5pc ? "True" : "False"}`,
+        `${t.significance1pc}: ${statistics.significance1pc ? "True" : "False"}`,
+      ],
+    });
+  }
+  return [{ type: "list", items }];
 }
 
 class Store {
@@ -131,6 +159,9 @@ class Store {
   private blackClock = new Clock();
   private whiteClock = new Clock();
   private gameManager = new GameManager(this.recordManager, this.blackClock, this.whiteClock);
+  private parallelGameManager = new ParallelGameManager();
+  private _parallelGameProgress?: ParallelGameProgress;
+  private _gameSettings: GameSettings = defaultGameSettings();
   private csaGameManager = new CSAGameManager(this.recordManager, this.blackClock, this.whiteClock);
   private analysisManager = new AnalysisManager(this.recordManager);
   private mateSearchManager = new MateSearchManager();
@@ -156,6 +187,12 @@ class Store {
         saveRecordForWebApp(this.record);
         clearURLParams();
       })
+      .on("updateComment", () => {
+        saveRecordForWebApp(this.record);
+      })
+      .on("updateBookmark", () => {
+        saveRecordForWebApp(this.record);
+      })
       .on("updateCustomData", () => {
         this.onUpdateCustomDataHandlers.forEach((handler) => handler());
         saveRecordForWebApp(this.record);
@@ -167,7 +204,7 @@ class Store {
       });
     this.gameManager
       .on("saveRecord", this.onSaveRecord.bind(refs))
-      .on("gameEnd", this.onGameEnd.bind(refs))
+      .on("closed", this.onGameClosed.bind(refs))
       .on("flipBoard", this.onFlipBoard.bind(refs))
       .on("pieceBeat", () => playPieceBeat(useAppSettings().pieceVolume))
       .on("beepShort", this.onBeepShort.bind(refs))
@@ -176,9 +213,16 @@ class Store {
       .on("error", (e) => {
         useErrorStore().add(e);
       });
+    this.parallelGameManager
+      .on("progress", this.onParallelGameProgress.bind(refs))
+      .on("saveRecord", this.onSaveRecord.bind(refs))
+      .on("closed", this.onParallelGameClosed.bind(refs))
+      .on("error", (e) => {
+        useErrorStore().add(e);
+      });
     this.csaGameManager
       .on("saveRecord", this.onSaveRecord.bind(refs))
-      .on("gameEnd", this.onCSAGameEnd.bind(refs))
+      .on("closed", this.onCSAGameClosed.bind(refs))
       .on("flipBoard", this.onFlipBoard.bind(refs))
       .on("pieceBeat", () => playPieceBeat(useAppSettings().pieceVolume))
       .on("beepShort", this.onBeepShort.bind(refs))
@@ -200,8 +244,8 @@ class Store {
       .on("notImplemented", this.onNotImplemented.bind(refs))
       .on("noMate", this.onNoMate.bind(refs))
       .on("error", this.onCheckmateError.bind(refs));
+    setOnStartSearchHandler(this.endUSIIteration.bind(refs));
     setOnUpdateUSIInfoHandler(this.updateUSIInfo.bind(refs));
-    setOnUpdateUSIPonderInfoHandler(this.updateUSIPonderInfo.bind(refs));
   }
 
   addEventListener(event: "changePosition", handler: ChangePositionHandler): void;
@@ -262,6 +306,10 @@ class Store {
     return this.recordManager.inCommentPVs;
   }
 
+  get positionCounts(): ReadonlyMap<string, number> {
+    return this.recordManager.positionCounts;
+  }
+
   updateStandardRecordMetadata(update: { key: RecordMetadataKey; value: string }): void {
     this.recordManager.updateStandardMetadata(update);
   }
@@ -275,7 +323,14 @@ class Store {
       engineName?: string;
     },
   ): void {
-    this.recordManager.appendSearchComment(type, searchInfo, behavior, options);
+    const appSettings = useAppSettings();
+    this.recordManager.appendSearchComment(
+      type,
+      appSettings.searchCommentFormat,
+      searchInfo,
+      behavior,
+      options,
+    );
   }
 
   appendMovesSilently(moves: Move[], opt?: DoMoveOption): number {
@@ -294,8 +349,8 @@ class Store {
     return this._customLayout;
   }
 
-  updateLayoutProfileList(uri: string, profileList: LayoutProfileList): void {
-    this._customLayout = profileList.profiles.find((p) => p.uri === uri) || null;
+  updateLayoutProfile(layout: LayoutProfile | null): void {
+    this._customLayout = layout;
   }
 
   get pvPreview(): PVPreview | undefined {
@@ -310,9 +365,17 @@ class Store {
     this._pvPreview = undefined;
   }
 
-  showPasteDialog(): void {
-    if (this.appState === AppState.NORMAL) {
+  showPasteDialog(mode: "standard" | "mergeIntoRoot" | "mergeIntoCurrent" = "standard"): void {
+    if (this.appState !== AppState.NORMAL) {
+      return;
+    }
+    const appSettings = useAppSettings();
+    if ((mode === "standard" && appSettings.showPasteDialog) || !isNative()) {
       this._appState = AppState.PASTE_DIALOG;
+    } else {
+      navigator.clipboard.readText().then((text) => {
+        this.pasteRecord(text, mode);
+      });
     }
   }
 
@@ -388,6 +451,30 @@ class Store {
     }
   }
 
+  showAddBookMovesDialog(): void {
+    if (this.appState === AppState.NORMAL) {
+      this._appState = AppState.ADD_BOOK_MOVES_DIALOG;
+    }
+  }
+
+  showResetBookDialog(): void {
+    if (this.appState === AppState.NORMAL) {
+      this._appState = AppState.RESET_BOOK_DIALOG;
+    }
+  }
+
+  showSearchDuplicatePositionsDialog(): void {
+    if (this.appState === AppState.NORMAL) {
+      this._appState = AppState.SEARCH_DUPLICATE_POSITIONS_DIALOG;
+    }
+  }
+
+  showElapsedTimeChartDialog(): void {
+    if (this.appState === AppState.NORMAL) {
+      this._appState = AppState.ELAPSED_TIME_CHART_DIALOG;
+    }
+  }
+
   destroyModalDialog(): void {
     if (
       this.appState === AppState.PASTE_DIALOG ||
@@ -402,7 +489,11 @@ class Store {
       this.appState === AppState.LAUNCH_USI_ENGINE_DIALOG ||
       this.appState === AppState.CONNECT_TO_CSA_SERVER_DIALOG ||
       this.appState === AppState.LOAD_REMOTE_FILE_DIALOG ||
-      this.appState === AppState.SHARE_DIALOG
+      this.appState === AppState.SHARE_DIALOG ||
+      this.appState === AppState.ADD_BOOK_MOVES_DIALOG ||
+      this.appState === AppState.RESET_BOOK_DIALOG ||
+      this.appState === AppState.SEARCH_DUPLICATE_POSITIONS_DIALOG ||
+      this.appState === AppState.ELAPSED_TIME_CHART_DIALOG
     ) {
       this._appState = AppState.NORMAL;
     }
@@ -430,32 +521,46 @@ class Store {
     return this.usiMonitor.sessions;
   }
 
-  get candidates(): Move[] {
+  get candidates(): CandidateMove[] {
     const appSettings = useAppSettings();
-    const maxScoreDiff = 100;
+    const maxScoreDiff = appSettings.arrowScoreDiffRange;
     const sfen = this.recordManager.record.position.sfen;
-    const candidates: Move[] = [];
+    // 優先度1: 検討の第1エンジン（研究セッションの中で最小の sessionID）
+    // 優先度2: 対局中の手番側エンジン（ポンダー中でないセッション）
+    // 評価値ラベルはこのセッションのみ表示する。他のセッションは矢印のみ表示する。
+    const preferredSession =
+      this.usiMonitor.sessions.find((s) => this.researchManager.isSessionExists(s.sessionID)) ||
+      this.usiMonitor.sessions.find((s) => !s.ponderMove);
+    const candidates: CandidateMove[] = [];
     const usiSet = new Set<string>();
-    for (const session of this.usiMonitor.sessions) {
+    // 優先セッションを先頭に並べ替え、同一手の重複除去で優先セッションが先に登録されるようにする
+    const orderedSessions = preferredSession
+      ? [preferredSession, ...this.usiMonitor.sessions.filter((s) => s !== preferredSession)]
+      : this.usiMonitor.sessions;
+    for (const session of orderedSessions) {
+      if (session.ponderMove) {
+        continue;
+      }
+      const isPreferred = session === preferredSession;
       let entryCount = 0;
       let maxScore = -Infinity;
-      for (const iteration of session.latestIteration) {
+      for (const info of session.latestInfo) {
         if (entryCount >= appSettings.maxArrowsPerEngine) {
           break;
         }
-        if (iteration.multiPV && iteration.multiPV > appSettings.maxArrowsPerEngine) {
+        if (info.multiPV && info.multiPV > appSettings.maxArrowsPerEngine) {
           break;
         }
-        if (!iteration.pv?.length) {
+        if (!info.pv?.length) {
           continue;
         }
         const score =
-          iteration.score !== undefined
-            ? iteration.score
-            : iteration.scoreMate
-              ? iteration.scoreMate > 0
-                ? 1e8 - iteration.scoreMate
-                : -1e8 - iteration.scoreMate
+          info.score !== undefined
+            ? info.score
+            : info.scoreMate
+              ? info.scoreMate > 0
+                ? 1e8 - info.scoreMate
+                : -1e8 - info.scoreMate
               : undefined;
         if (score !== undefined) {
           if (score < maxScore - maxScoreDiff) {
@@ -464,14 +569,14 @@ class Store {
             maxScore = score;
           }
         }
-        const usi = iteration.pv[0];
+        const usi = info.pv[0];
         if (usiSet.has(usi)) {
           continue;
         }
-        if (iteration.position !== sfen) {
+        if (info.position !== sfen) {
           continue;
         }
-        const pos = Position.newBySFEN(iteration.position);
+        const pos = Position.newBySFEN(info.position);
         if (!pos) {
           continue;
         }
@@ -479,7 +584,8 @@ class Store {
         if (!move || !pos.doMove(move)) {
           continue;
         }
-        candidates.push(move);
+        const candidateScore = isPreferred && appSettings.showArrowScore ? score : undefined;
+        candidates.push({ move, score: candidateScore });
         usiSet.add(usi);
         entryCount++;
       }
@@ -499,34 +605,32 @@ class Store {
     this.researchManager.unpause(sessionID);
   }
 
-  updateUSIInfo(sessionID: number, usi: string, name: string, info: USIInfoCommand): void {
-    if (this.recordManager.record.usi !== usi) {
-      return;
-    }
-    const appSettings = useAppSettings();
-    this.usiMonitor.update(
-      sessionID,
-      this.recordManager.record.position,
-      name,
-      info,
-      appSettings.maxPVTextLength,
-    );
+  getResearchMultiPV(sessionID: number): number | undefined {
+    return this.researchManager.getMultiPV(sessionID);
   }
 
-  updateUSIPonderInfo(sessionID: number, usi: string, name: string, info: USIInfoCommand): void {
-    const record = Record.newByUSI(usi);
-    if (record instanceof Error) {
-      api.log(LogLevel.ERROR, `invalid USI: ${usi} (updateUSIPonderInfo)`);
-      return;
-    }
-    const ponderMove = record.current.move;
-    if (!(ponderMove instanceof Move)) {
+  setResearchMultiPV(sessionID: number, multiPV: number): void {
+    this.researchManager.setMultiPV(sessionID, multiPV);
+  }
+
+  endUSIIteration(sessionID: number): void {
+    this.usiMonitor.endIteration(sessionID);
+  }
+
+  updateUSIInfo(
+    sessionID: number,
+    position: ImmutablePosition,
+    name: string,
+    info: USIInfoCommand,
+    ponderMove?: Move,
+  ): void {
+    if (this.appState === AppState.PARALLEL_GAME) {
       return;
     }
     const appSettings = useAppSettings();
     this.usiMonitor.update(
       sessionID,
-      record.position,
+      position,
       name,
       info,
       appSettings.maxPVTextLength,
@@ -551,20 +655,37 @@ class Store {
   }
 
   startGame(settings: GameSettings): void {
-    if (this.appState !== AppState.GAME_DIALOG || useBusyState().isBusy) {
+    if (useBusyState().isBusy) {
+      return;
+    }
+    if (this.appState !== AppState.NORMAL && this.appState !== AppState.GAME_DIALOG) {
       return;
     }
     useBusyState().retain();
     api
       .saveGameSettings(settings)
-      .then(() => {
+      .then(async () => {
+        this._gameSettings = settings;
         const appSettings = useAppSettings();
-        const builder = defaultPlayerBuilder(appSettings.engineTimeoutSeconds);
-        return this.gameManager.start(settings, builder);
+        if (settings.parallelism >= 2 || settings.sprtEnabled) {
+          this._parallelGameProgress = undefined;
+          const playerBuilder = defaultPlayerBuilder({
+            timeoutSeconds: appSettings.engineTimeoutSeconds,
+            discardUSIInfo: !settings.enableComment,
+          });
+          this._appState = AppState.PARALLEL_GAME; // info コマンドの表示を抑制するために start より前に state を変更する。
+          await this.parallelGameManager.start(settings, playerBuilder);
+        } else {
+          const playerBuilder = defaultPlayerBuilder({
+            timeoutSeconds: appSettings.engineTimeoutSeconds,
+          });
+          this._appState = AppState.GAME;
+          await this.gameManager.startLinear(settings, playerBuilder);
+        }
       })
-      .then(() => (this._appState = AppState.GAME))
       .catch((e) => {
-        useErrorStore().add("対局の初期化中にエラーが出ました: " + e);
+        useErrorStore().add(e);
+        this._appState = AppState.NORMAL;
       })
       .finally(() => {
         useBusyState().release();
@@ -572,7 +693,7 @@ class Store {
   }
 
   get gameSettings(): GameSettings {
-    return this.gameManager.settings;
+    return this._gameSettings;
   }
 
   get gameResults(): GameResults {
@@ -613,12 +734,14 @@ class Store {
       })
       .then(() => {
         const appSettings = useAppSettings();
-        const builder = defaultPlayerBuilder(appSettings.engineTimeoutSeconds);
+        const builder = defaultPlayerBuilder({
+          timeoutSeconds: appSettings.engineTimeoutSeconds,
+        });
         return this.csaGameManager.login(settings, builder);
       })
       .then(() => (this._appState = AppState.CSA_GAME))
       .catch((e) => {
-        useErrorStore().add("対局の初期化中にエラーが出ました: " + e);
+        useErrorStore().add(e);
       })
       .finally(() => {
         useBusyState().release();
@@ -630,7 +753,7 @@ class Store {
       return;
     }
     if (this.csaGameManager.state === CSAGameState.GAME) {
-      useErrorStore().add("対局が始まっているため通信対局をキャンセルできませんでした。");
+      useErrorStore().add("対局が始まっているため通信対局をキャンセルできませんでした。"); // TODO: i18n
       return;
     }
     this.csaGameManager.logout();
@@ -641,7 +764,7 @@ class Store {
     switch (this.appState) {
       case AppState.GAME:
         // 連続対局の場合は確認ダイアログを表示する。
-        if (this.gameManager.settings.repeat >= 2) {
+        if (this.gameSettings.repeat >= 2) {
           this.showConfirmation({
             message: t.areYouSureWantToQuitGames,
             onOk: () => this.gameManager.stop(),
@@ -649,6 +772,12 @@ class Store {
         } else {
           this.gameManager.stop();
         }
+        break;
+      case AppState.PARALLEL_GAME:
+        this.showConfirmation({
+          message: t.areYouSureWantToQuitGames,
+          onOk: () => this.parallelGameManager.stop(),
+        });
         break;
       case AppState.CSA_GAME:
         // 確認ダイアログを表示する。
@@ -668,10 +797,19 @@ class Store {
     useMessageStore().enqueue({
       text: t.gameProgress,
       attachments: getMessageAttachmentsByGameResults(results),
+      withCopyButton: true,
     });
   }
 
-  private onGameEnd(results: GameResults, specialMoveType: SpecialMoveType): void {
+  get parallelGameProgress(): ParallelGameProgress | undefined {
+    return this._parallelGameProgress;
+  }
+
+  private onParallelGameProgress(progress: ParallelGameProgress): void {
+    this._parallelGameProgress = progress;
+  }
+
+  private onGameClosed(results: GameResults, specialMoveType?: SpecialMoveType): void {
     if (this.appState !== AppState.GAME) {
       return;
     }
@@ -680,16 +818,29 @@ class Store {
       useMessageStore().enqueue({
         text: t.allGamesCompleted,
         attachments: getMessageAttachmentsByGameResults(results),
+        withCopyButton: true,
       });
     } else if (specialMoveType) {
       useMessageStore().enqueue({
-        text: `${t.gameEnded}（${formatSpecialMove(specialMoveType)})`,
+        text: `${t.gameEnded}（${formatSpecialMove(specialMoveType, this.record.current.nextColor)})`,
       });
     }
     this._appState = AppState.NORMAL;
   }
 
-  private onCSAGameEnd(): void {
+  private onParallelGameClosed(results: GameResults, sprtSummary?: SPRTSummary): void {
+    if (this.appState !== AppState.PARALLEL_GAME) {
+      return;
+    }
+    useMessageStore().enqueue({
+      text: t.allGamesCompleted,
+      attachments: getMessageAttachmentsByGameResults(results, sprtSummary),
+      withCopyButton: true,
+    });
+    this._appState = AppState.NORMAL;
+  }
+
+  private onCSAGameClosed(): void {
     if (this.appState !== AppState.CSA_GAME) {
       return;
     }
@@ -703,15 +854,14 @@ class Store {
     }
   }
 
-  private onSaveRecord(): void {
+  private onSaveRecord(dir: string, recordManager: RecordManager = this.recordManager): void {
     const appSettings = useAppSettings();
-    const fname = generateRecordFileName(
-      this.recordManager.record.metadata,
-      appSettings.recordFileNameTemplate,
-      appSettings.defaultRecordFileFormat,
-    );
-    const path = join(appSettings.autoSaveDirectory, fname);
-    this.saveRecordByPath(path).catch((e) => {
+    const fname = generateRecordFileName(recordManager.record, {
+      template: appSettings.recordFileNameTemplate,
+      extension: appSettings.defaultRecordFileFormat,
+    });
+    const path = join(dir, fname);
+    this.saveRecordByPath(path, { recordManager }).catch((e) => {
       useErrorStore().add(e);
     });
   }
@@ -721,10 +871,15 @@ class Store {
     if (appSettings.clockSoundTarget === ClockSoundTarget.ONLY_USER && !this.isMovableByUser) {
       return;
     }
-    beepShort({
-      frequency: appSettings.clockPitch,
-      volume: appSettings.clockVolume,
-    });
+    // An exception may be thrown if the audio API is not supported.
+    try {
+      beepShort({
+        frequency: appSettings.clockPitch,
+        volume: appSettings.clockVolume,
+      });
+    } catch (e) {
+      useErrorStore().add(e);
+    }
   }
 
   private onBeepUnlimited(): void {
@@ -732,10 +887,15 @@ class Store {
     if (appSettings.clockSoundTarget === ClockSoundTarget.ONLY_USER && !this.isMovableByUser) {
       return;
     }
-    beepUnlimited({
-      frequency: appSettings.clockPitch,
-      volume: appSettings.clockVolume,
-    });
+    // An exception may be thrown if the audio API is not supported.
+    try {
+      beepUnlimited({
+        frequency: appSettings.clockPitch,
+        volume: appSettings.clockVolume,
+      });
+    } catch (e) {
+      useErrorStore().add(e);
+    }
   }
 
   doMove(move: Move): void {
@@ -746,7 +906,12 @@ class Store {
       return;
     }
     const appSettings = useAppSettings();
-    playPieceBeat(appSettings.pieceVolume);
+    // An exception may be thrown if the audio API is not supported.
+    try {
+      playPieceBeat(appSettings.pieceVolume);
+    } catch (e) {
+      useErrorStore().add(e);
+    }
   }
 
   private onFinish(): void {
@@ -851,7 +1016,7 @@ class Store {
     }
     useBusyState().retain();
     if (!mateSearchSettings.usi) {
-      useErrorStore().add(new Error("エンジンが設定されていません。"));
+      useErrorStore().add(new Error(t.engineNotSelected));
       return;
     }
     api
@@ -865,7 +1030,7 @@ class Store {
         }
       })
       .catch((e) => {
-        useErrorStore().add("詰将棋探索の初期化中にエラーが出ました: " + e);
+        useErrorStore().add(e);
       })
       .finally(() => {
         useBusyState().release();
@@ -926,14 +1091,21 @@ class Store {
     this.researchManager?.updatePosition(this.recordManager.record);
   }
 
-  resetRecord(): void {
+  resetRecord(mode: "keepRootPosition" | "hirateSetup" = "keepRootPosition"): void {
     if (this.appState != AppState.NORMAL) {
       return;
     }
     this.showConfirmation({
       message: t.areYouSureWantToClearRecord,
       onOk: () => {
-        this.recordManager.reset();
+        switch (mode) {
+          case "keepRootPosition":
+            this.recordManager.reset();
+            break;
+          case "hirateSetup":
+            this.recordManager.resetByInitialPositionType(InitialPositionType.STANDARD);
+            break;
+        }
       },
     });
   }
@@ -1015,19 +1187,19 @@ class Store {
   }
 
   goForward(): void {
-    if (this.appState === AppState.NORMAL) {
+    if (this.appState === AppState.NORMAL || this.appState === AppState.ELAPSED_TIME_CHART_DIALOG) {
       this.recordManager.goForward();
     }
   }
 
   goBack(): void {
-    if (this.appState === AppState.NORMAL) {
+    if (this.appState === AppState.NORMAL || this.appState === AppState.ELAPSED_TIME_CHART_DIALOG) {
       this.recordManager.goBack();
     }
   }
 
   changePly(ply: number): void {
-    if (this.appState === AppState.NORMAL) {
+    if (this.appState === AppState.NORMAL || this.appState === AppState.ELAPSED_TIME_CHART_DIALOG) {
       this.recordManager.changePly(ply);
     }
   }
@@ -1038,12 +1210,24 @@ class Store {
     }
   }
 
+  changeNode(node: ImmutableNode): void {
+    if (this.appState === AppState.NORMAL) {
+      this.recordManager.changeNode(node);
+    }
+  }
+
   swapWithNextBranch(): boolean {
     return this.recordManager.swapWithNextBranch();
   }
 
   swapWithPreviousBranch(): boolean {
     return this.recordManager.swapWithPreviousBranch();
+  }
+
+  backToMainBranch(): void {
+    if (this.appState === AppState.NORMAL) {
+      this.recordManager.resetAllBranchSelection();
+    }
   }
 
   removeCurrentMove(): void {
@@ -1069,48 +1253,71 @@ class Store {
     return false;
   }
 
-  copyRecordKIF(): void {
+  copyRecordKIF(options?: { fromCurrentPosition?: boolean }): void {
     const appSettings = useAppSettings();
-    const str = exportKIF(this.recordManager.record, {
+    const record = options?.fromCurrentPosition
+      ? this.recordManager.record.getSubtree()
+      : this.recordManager.record;
+    const str = exportKIF(record, {
       returnCode: appSettings.returnCode,
     });
     navigator.clipboard.writeText(str);
   }
 
-  copyRecordKI2(): void {
+  copyRecordKI2(options?: { fromCurrentPosition?: boolean }): void {
     const appSettings = useAppSettings();
-    const str = exportKI2(this.recordManager.record, {
+    const record = options?.fromCurrentPosition
+      ? this.recordManager.record.getSubtree()
+      : this.recordManager.record;
+    const str = exportKI2(record, {
       returnCode: appSettings.returnCode,
     });
     navigator.clipboard.writeText(str);
   }
 
-  copyRecordCSA(): void {
+  copyRecordCSA(options?: { fromCurrentPosition?: boolean }): void {
     const appSettings = useAppSettings();
-    const str = exportCSA(this.recordManager.record, {
+    const record = options?.fromCurrentPosition
+      ? this.recordManager.record.getSubtree()
+      : this.recordManager.record;
+    const str = exportCSA(record, {
       returnCode: appSettings.returnCode,
       v3: appSettings.useCSAV3 ? { milliseconds: true } : undefined,
     });
     navigator.clipboard.writeText(str);
   }
 
-  copyRecordUSIBefore(): void {
+  copyRecordUSI(target: "all" | "before" | "after"): void {
     const appSettings = useAppSettings();
-    const str = this.recordManager.record.getUSI({
+    const record =
+      target === "after" ? this.recordManager.record.getSubtree() : this.recordManager.record;
+    const str = record.getUSI({
       startpos: appSettings.enableUSIFileStartpos,
-      resign: appSettings.enableUSIFileResign,
+      resign: appSettings.enableUSIFileSpecialMoves,
+      repDraw: appSettings.enableUSIFileSpecialMoves,
+      draw: appSettings.enableUSIFileSpecialMoves,
+      timeout: appSettings.enableUSIFileSpecialMoves,
+      break: appSettings.enableUSIFileSpecialMoves,
+      win: appSettings.enableUSIFileSpecialMoves,
+      allMoves: target !== "before",
     });
     navigator.clipboard.writeText(str);
   }
 
-  copyRecordUSIAll(): void {
-    const appSettings = useAppSettings();
-    const str = this.recordManager.record.getUSI({
-      startpos: appSettings.enableUSIFileStartpos,
-      resign: appSettings.enableUSIFileResign,
-      allMoves: true,
-    });
+  copyRecordJKF(options?: { fromCurrentPosition?: boolean }): void {
+    const record = options?.fromCurrentPosition
+      ? this.recordManager.record.getSubtree()
+      : this.recordManager.record;
+    const str = exportJKFString(record);
     navigator.clipboard.writeText(str);
+  }
+
+  copyRecordUSEN(options?: { fromCurrentPosition?: boolean }): void {
+    const record = options?.fromCurrentPosition
+      ? this.recordManager.record.getSubtree()
+      : this.recordManager.record;
+    const [usen] = record.usen;
+    navigator.clipboard.writeText(usen);
   }
 
   copyBoardSFEN(): void {
@@ -1118,21 +1325,19 @@ class Store {
     navigator.clipboard.writeText(str);
   }
 
-  copyRecordJKF(): void {
-    const str = exportJKFString(this.recordManager.record);
+  copyBoardBOD(): void {
+    const str = exportBOD(this.recordManager.record);
     navigator.clipboard.writeText(str);
   }
 
-  copyRecordUSEN(): void {
-    const [usen] = this.recordManager.record.usen;
-    navigator.clipboard.writeText(usen);
-  }
-
-  pasteRecord(data: string): void {
+  pasteRecord(
+    data: string,
+    mode: "standard" | "mergeIntoRoot" | "mergeIntoCurrent" = "standard",
+  ): void {
     if (this.appState !== AppState.NORMAL) {
       return;
     }
-    const error = this.recordManager.importRecord(data);
+    const error = this.recordManager.importRecord(data.trim(), { mode });
     if (error) {
       useErrorStore().add(error);
       return;
@@ -1147,7 +1352,7 @@ class Store {
     useBusyState().retain();
     Promise.resolve()
       .then(() => {
-        return path || api.showOpenRecordDialog();
+        return path || api.showOpenRecordDialog(getStandardRecordFileFormats());
       })
       .then((path) => {
         if (!path) {
@@ -1168,7 +1373,7 @@ class Store {
         }
       })
       .catch((e) => {
-        useErrorStore().add("棋譜の読み込み中にエラーが出ました: " + e);
+        useErrorStore().add("棋譜の読み込み中にエラーが出ました: " + e); // TODO: i18n
       })
       .finally(() => {
         useBusyState().release();
@@ -1189,11 +1394,10 @@ class Store {
         const appSettings = useAppSettings();
         const defaultPath =
           (!options?.format && path) ||
-          generateRecordFileName(
-            this.recordManager.record.metadata,
-            appSettings.recordFileNameTemplate,
-            options?.format || appSettings.defaultRecordFileFormat,
-          );
+          generateRecordFileName(this.recordManager.record, {
+            template: appSettings.recordFileNameTemplate,
+            extension: options?.format || appSettings.defaultRecordFileFormat,
+          });
         return api.showSaveRecordDialog(defaultPath);
       })
       .then((path) => {
@@ -1234,12 +1438,17 @@ class Store {
       });
   }
 
-  private async saveRecordByPath(path: string, opt?: { detectGarbled: boolean }): Promise<void> {
+  private async saveRecordByPath(
+    path: string,
+    opt?: { detectGarbled?: boolean; recordManager?: RecordManager },
+  ): Promise<void> {
     const appSettings = useAppSettings();
-    const result = this.recordManager.exportRecordAsBuffer(path, {
+    const recordManager = opt?.recordManager || this.recordManager;
+    const result = recordManager.exportRecordAsBuffer(path, {
       returnCode: appSettings.returnCode,
       detectGarbled: opt?.detectGarbled,
       csa: { v3: appSettings.useCSAV3 },
+      useUTF8ForKifAndKi2: appSettings.useUTF8ForKifAndKi2,
     });
     if (result instanceof Error) {
       throw result;
@@ -1257,7 +1466,7 @@ class Store {
     }
   }
 
-  restoreFromBackup(name: string): void {
+  restoreFromBackupV1(name: string): void {
     if (this.appState !== AppState.RECORD_FILE_HISTORY_DIALOG || useBusyState().isBusy) {
       return;
     }
@@ -1280,6 +1489,21 @@ class Store {
       .finally(() => {
         useBusyState().release();
       });
+  }
+
+  restoreFromBackupV2(kif: string): void {
+    if (this.appState !== AppState.RECORD_FILE_HISTORY_DIALOG || useBusyState().isBusy) {
+      return;
+    }
+    const err = this.recordManager.importRecord(kif, {
+      type: RecordFormatType.KIF,
+      markAsSaved: true,
+    });
+    if (err) {
+      useErrorStore().add(err);
+      return;
+    }
+    this._appState = AppState.NORMAL;
   }
 
   get remoteRecordFileURL() {
@@ -1347,6 +1571,7 @@ class Store {
           ],
         },
       ],
+      withCopyButton: true,
     });
   }
 
@@ -1355,15 +1580,9 @@ class Store {
       case AppState.NORMAL:
         return true;
       case AppState.GAME:
-        return (
-          (this.recordManager.record.position.color === Color.BLACK
-            ? this.gameManager.settings.black.uri
-            : this.gameManager.settings.white.uri) === uri.ES_HUMAN
-        );
+        return this.gameManager.waitingForHumanPlayerMove;
       case AppState.CSA_GAME:
-        return (
-          this.csaGameManager.isMyTurn && this.csaGameManager.settings.player.uri === uri.ES_HUMAN
-        );
+        return this.csaGameManager.waitingForHumanPlayerMove;
     }
     return false;
   }
@@ -1383,7 +1602,7 @@ class Store {
       ...confirmation,
       onOk: () => {
         if (this.appState !== lastAppState) {
-          useErrorStore().add("確認ダイアログ表示中に他の操作が行われたため処理が中止されました。");
+          useErrorStore().add("確認ダイアログ表示中に他の操作が行われたため処理が中止されました。"); // TODO: i18n
           return;
         }
         confirmation.onOk();

@@ -1,28 +1,39 @@
 import { MenuEvent } from "@/common/control/menu";
 import { AppState, ResearchState } from "@/common/control/state";
 import { GameResult } from "@/common/game/result";
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { Background, Renderer } from "@/common/ipc/channel";
 import { Bridge } from "@/renderer/ipc/bridge";
 import { LogType, LogLevel } from "@/common/log";
 import { CSAGameResult, CSASpecialMove } from "@/common/game/csa";
 import { PromptTarget } from "@/common/advanced/prompt";
 import { CommandType } from "@/common/advanced/command";
+import { BookFormat } from "@/common/book";
 
 const api: Bridge = {
   // Core
   updateAppState(appState: AppState, researchState: ResearchState, busy: boolean): void {
     ipcRenderer.send(Background.UPDATE_APP_STATE, appState, researchState, busy);
   },
+  async fetchProcessArgs(): Promise<string> {
+    return await ipcRenderer.invoke(Background.FETCH_PROCESS_ARGS);
+  },
   onClosable(): void {
     ipcRenderer.send(Background.ON_CLOSABLE);
   },
-  onClose(callback: () => void): void {
-    ipcRenderer.on(Renderer.CLOSE, callback);
+  onClose(callback: (confirmations: string[]) => void): void {
+    ipcRenderer.on(Renderer.CLOSE, (_, confirmations: string[]) => {
+      callback(confirmations);
+    });
   },
-  onSendError(callback: (e: Error) => void): void {
+  onSendError(callback: (e: string) => void): void {
     ipcRenderer.on(Renderer.SEND_ERROR, (_, e) => {
       callback(e);
+    });
+  },
+  onSendMessage(callback: (json: string) => void): void {
+    ipcRenderer.on(Renderer.SEND_MESSAGE, (_, json) => {
+      callback(json);
     });
   },
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -79,16 +90,19 @@ const api: Bridge = {
   async saveUSIEngines(json: string): Promise<void> {
     await ipcRenderer.invoke(Background.SAVE_USI_ENGINES, json);
   },
+  async loadBookImportSettings(): Promise<string> {
+    return await ipcRenderer.invoke(Background.LOAD_BOOK_IMPORT_SETTINGS);
+  },
+  async saveBookImportSettings(json: string): Promise<void> {
+    await ipcRenderer.invoke(Background.SAVE_BOOK_IMPORT_SETTINGS, json);
+  },
   onUpdateAppSettings(callback: (json: string) => void): void {
     ipcRenderer.on(Renderer.UPDATE_APP_SETTINGS, (_, json) => callback(json));
   },
 
   // Record File
-  async fetchInitialRecordFileRequest(): Promise<string> {
-    return await ipcRenderer.invoke(Background.FETCH_INITIAL_RECORD_FILE_REQUEST);
-  },
-  async showOpenRecordDialog(): Promise<string> {
-    return await ipcRenderer.invoke(Background.SHOW_OPEN_RECORD_DIALOG);
+  async showOpenRecordDialog(formats: string[]): Promise<string> {
+    return await ipcRenderer.invoke(Background.SHOW_OPEN_RECORD_DIALOG, formats);
   },
   async showSaveRecordDialog(defaultPath: string): Promise<string> {
     return await ipcRenderer.invoke(Background.SHOW_SAVE_RECORD_DIALOG, defaultPath);
@@ -102,11 +116,17 @@ const api: Bridge = {
   async saveRecord(path: string, data: Uint8Array): Promise<void> {
     await ipcRenderer.invoke(Background.SAVE_RECORD, path, data);
   },
-  async loadRemoteRecordFile(url: string): Promise<string> {
-    return await ipcRenderer.invoke(Background.LOAD_REMOTE_RECORD_FILE, url);
+  async loadRemoteTextFile(url: string): Promise<string> {
+    return await ipcRenderer.invoke(Background.LOAD_REMOTE_TEXT_FILE, url);
   },
   async convertRecordFiles(json: string): Promise<string> {
     return await ipcRenderer.invoke(Background.CONVERT_RECORD_FILES, json);
+  },
+  async showSelectSFENDialog(lastPath: string): Promise<string> {
+    return await ipcRenderer.invoke(Background.SHOW_SELECT_SFEN_DIALOG, lastPath);
+  },
+  async loadSFENFile(path: string): Promise<string[]> {
+    return await ipcRenderer.invoke(Background.LOAD_SFEN_FILE, path);
   },
   async loadRecordFileHistory(): Promise<string> {
     return await ipcRenderer.invoke(Background.LOAD_RECORD_FILE_HISTORY);
@@ -127,6 +147,55 @@ const api: Bridge = {
     ipcRenderer.on(Renderer.OPEN_RECORD, (_, path) => callback(path));
   },
 
+  // Book
+  async showOpenBookDialog(): Promise<string> {
+    return await ipcRenderer.invoke(Background.SHOW_OPEN_BOOK_DIALOG);
+  },
+  async showSaveBookDialog(session: number, targetFormat?: BookFormat): Promise<string> {
+    return await ipcRenderer.invoke(Background.SHOW_SAVE_BOOK_DIALOG, session, targetFormat);
+  },
+  async clearBook(session: number, format?: BookFormat): Promise<void> {
+    return await ipcRenderer.invoke(Background.CLEAR_BOOK, session, format);
+  },
+  async openBook(session: number, path: string, json: string): Promise<void> {
+    await ipcRenderer.invoke(Background.OPEN_BOOK, session, path, json);
+  },
+  async openBookAsNewSession(path: string, json: string): Promise<number> {
+    return await ipcRenderer.invoke(Background.OPEN_BOOK_AS_NEW_SESSION, path, json);
+  },
+  async closeBookSession(session: number): Promise<void> {
+    return await ipcRenderer.invoke(Background.CLOSE_BOOK_SESSION, session);
+  },
+  async saveBook(session: number, path: string): Promise<void> {
+    return await ipcRenderer.invoke(Background.SAVE_BOOK, session, path);
+  },
+  async exportBook(session: number, path: string, targetFormat: BookFormat): Promise<void> {
+    return await ipcRenderer.invoke(Background.EXPORT_BOOK, session, path, targetFormat);
+  },
+  async getBookFormat(session: number): Promise<BookFormat> {
+    return await ipcRenderer.invoke(Background.GET_BOOK_FORMAT, session);
+  },
+  async searchBookMoves(session: number, sfen: string): Promise<string> {
+    return await ipcRenderer.invoke(Background.SEARCH_BOOK_MOVES, session, sfen);
+  },
+  async updateBookMove(session: number, sfen: string, json: string): Promise<void> {
+    return await ipcRenderer.invoke(Background.UPDATE_BOOK_MOVE, session, sfen, json);
+  },
+  async removeBookMove(session: number, sfen: string, usi: string): Promise<void> {
+    return await ipcRenderer.invoke(Background.REMOVE_BOOK_MOVE, session, sfen, usi);
+  },
+  async updateBookMoveOrder(
+    session: number,
+    sfen: string,
+    usi: string,
+    order: number,
+  ): Promise<void> {
+    return await ipcRenderer.invoke(Background.UPDATE_BOOK_MOVE_ORDER, session, sfen, usi, order);
+  },
+  async importBookMoves(session: number, json: string): Promise<string> {
+    return await ipcRenderer.invoke(Background.IMPORT_BOOK_MOVES, session, json);
+  },
+
   // USI
   async showSelectUSIEngineDialog(): Promise<string> {
     return await ipcRenderer.invoke(Background.SHOW_SELECT_USI_ENGINE_DIALOG);
@@ -134,14 +203,24 @@ const api: Bridge = {
   async getUSIEngineInfo(path: string, timeoutSeconds: number): Promise<string> {
     return await ipcRenderer.invoke(Background.GET_USI_ENGINE_INFO, path, timeoutSeconds);
   },
-  async sendUSISetOption(path: string, name: string, timeoutSeconds: number): Promise<void> {
-    await ipcRenderer.invoke(Background.SEND_USI_SET_OPTION, path, name, timeoutSeconds);
+  async getUSIEngineMetadata(path: string): Promise<string> {
+    return await ipcRenderer.invoke(Background.GET_USI_ENGINE_METADATA, path);
   },
-  async usiLaunch(json: string, timeoutSeconds: number): Promise<number> {
-    return await ipcRenderer.invoke(Background.LAUNCH_USI, json, timeoutSeconds);
+  async sendUSIOptionButtonSignal(
+    path: string,
+    name: string,
+    timeoutSeconds: number,
+  ): Promise<void> {
+    await ipcRenderer.invoke(Background.SEND_USI_OPTION_BUTTON_SIGNAL, path, name, timeoutSeconds);
+  },
+  async usiLaunch(json: string, json2: string): Promise<number> {
+    return await ipcRenderer.invoke(Background.LAUNCH_USI, json, json2);
   },
   async usiReady(sessionID: number): Promise<void> {
     await ipcRenderer.invoke(Background.USI_READY, sessionID);
+  },
+  async usiSetOption(sessionID: number, name: string, value: string): Promise<void> {
+    await ipcRenderer.invoke(Background.USI_SET_OPTION, sessionID, name, value);
   },
   async usiGo(sessionID: number, usi: string, timeStatesJSON: string): Promise<void> {
     await ipcRenderer.invoke(Background.USI_GO, sessionID, usi, timeStatesJSON);
@@ -155,8 +234,8 @@ const api: Bridge = {
   async usiGoInfinite(sessionID: number, usi: string): Promise<void> {
     await ipcRenderer.invoke(Background.USI_GO_INFINITE, sessionID, usi);
   },
-  async usiGoMate(sessionID: number, usi: string): Promise<void> {
-    await ipcRenderer.invoke(Background.USI_GO_MATE, sessionID, usi);
+  async usiGoMate(sessionID: number, usi: string, maxSeconds?: number): Promise<void> {
+    await ipcRenderer.invoke(Background.USI_GO_MATE, sessionID, usi, maxSeconds);
   },
   async usiStop(sessionID: number): Promise<void> {
     await ipcRenderer.invoke(Background.USI_STOP, sessionID);
@@ -196,11 +275,6 @@ const api: Bridge = {
   },
   onUSIInfo(callback: (sessionID: number, usi: string, json: string) => void): void {
     ipcRenderer.on(Renderer.USI_INFO, (_, sessionID, usi, json) => {
-      callback(sessionID, usi, json);
-    });
-  },
-  onUSIPonderInfo(callback: (sessionID: number, usi: string, json: string) => void): void {
-    ipcRenderer.on(Renderer.USI_PONDER_INFO, (_, sessionID, usi, json) => {
       callback(sessionID, usi, json);
     });
   },
@@ -305,10 +379,13 @@ const api: Bridge = {
   updateLayoutProfileList(uri: string, profileList: string): void {
     ipcRenderer.send(Background.UPDATE_LAYOUT_PROFILE_LIST, uri, profileList);
   },
-  onUpdateLayoutProfileList(callback: (uri: string, json: string) => void): void {
-    ipcRenderer.on(Renderer.UPDATE_LAYOUT_PROFILE_LIST, (_, uri, json) => {
-      callback(uri, json);
+  onUpdateLayoutProfile(callback: (json: string | null) => void): void {
+    ipcRenderer.on(Renderer.UPDATE_LAYOUT_PROFILE, (_, json) => {
+      callback(json);
     });
+  },
+  async createDesktopShortcutForLayoutProfile(uri: string, name: string) {
+    await ipcRenderer.invoke(Background.CREATE_DESKTOP_SHORTCUT_FOR_LAYOUT_PROFILE, uri, name);
   },
 
   // Log
@@ -332,6 +409,9 @@ const api: Bridge = {
   openWebBrowser(url: string) {
     ipcRenderer.send(Background.OPEN_WEB_BROWSER, url);
   },
+  async getMachineSpec(): Promise<string> {
+    return await ipcRenderer.invoke(Background.GET_MACHINE_SPEC);
+  },
   async isEncryptionAvailable(): Promise<boolean> {
     return await ipcRenderer.invoke(Background.IS_ENCRYPTION_AVAILABLE);
   },
@@ -340,6 +420,14 @@ const api: Bridge = {
   },
   sendTestNotification(): void {
     ipcRenderer.send(Background.SEND_TEST_NOTIFICATION);
+  },
+  getPathForFile(file: File): string {
+    return webUtils.getPathForFile(file);
+  },
+  onProgress(callback: (progress: number) => void): void {
+    ipcRenderer.on(Renderer.PROGRESS, (_, progress) => {
+      callback(progress);
+    });
   },
 };
 

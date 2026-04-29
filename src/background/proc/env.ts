@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { getElectron } from "@/background/helpers/portability";
 
 export function isDevelopment(): boolean {
   return process.env.npm_lifecycle_event === "electron:serve" && !isTest();
@@ -31,36 +30,19 @@ let tempPathForTesting: string;
 
 export function getTempPathForTesting(): string {
   if (!tempPathForTesting) {
-    tempPathForTesting = fs.mkdtempSync(path.join(os.tmpdir(), "electron-shogi-test-"));
+    tempPathForTesting = fs.mkdtempSync(path.join(os.tmpdir(), "shogihome-test-"));
   }
   return tempPathForTesting;
 }
 
-export function getAppPath(name: "userData" | "logs" | "exe" | "documents" | "pictures"): string {
-  // test
-  if (isTest()) {
-    const tempPath = path.join(getTempPathForTesting(), name);
-    fs.mkdirSync(tempPath, { recursive: true });
-    return tempPath;
-  }
-
-  // electron app
-  const app = getElectron()?.app;
-  if (app) {
-    return app.getPath(name);
-  }
-
-  // command line tool
-  switch (name) {
-    case "logs":
-      return path.join(process.cwd(), "logs");
-    case "exe":
-      return process.argv[1];
-    default:
-      return process.cwd();
-  }
+export function getPreloadPath(): string {
+  return isProduction()
+    ? path.join(process.resourcesPath, "app.asar/dist/packed/preload.js")
+    : path.join(import.meta.dirname, "../../../packed/preload.js");
 }
 
-export function getPreloadPath() {
-  return isProduction() ? "./preload.js" : "../../../packed/preload.js";
+export function getBundlePath(): string {
+  return isProduction()
+    ? path.join(process.resourcesPath, "app.asar/dist")
+    : path.join(import.meta.dirname, "../../..");
 }

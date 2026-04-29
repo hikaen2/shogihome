@@ -4,6 +4,13 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { htmlTemplate } from "./plugins/html_template";
 
+const appVersion = process.env.npm_package_version || "0.0.0";
+const buildEnv = process.env.CI === "true" ? "ci" : "local";
+const buildNumber =
+  process.env.BUILD_NUMBER ||
+  `${Date.now()}.${String(Math.floor(Math.random() * 1000)).padStart(3, "0")}`;
+const buildVersion = process.env.BUILD_VERSION || `${buildEnv}-${buildNumber}`;
+
 export default defineConfig({
   resolve: {
     alias: [{ find: "@", replacement: "/src" }],
@@ -11,19 +18,21 @@ export default defineConfig({
   plugins: [
     vue(),
     htmlTemplate({
-      APP_VERSION: `${process.env.npm_package_version}`,
+      APP_VERSION: appVersion,
+      BUILD_VERSION: buildVersion,
     }),
   ],
   base: "./",
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, "index.html"),
-        prompt: resolve(__dirname, "prompt.html"),
-        "layout-manager": resolve(__dirname, "layout-manager.html"),
+        main: resolve(import.meta.dirname, "index.html"),
+        prompt: resolve(import.meta.dirname, "prompt.html"),
+        monitor: resolve(import.meta.dirname, "monitor.html"),
+        "layout-manager": resolve(import.meta.dirname, "layout-manager.html"),
       },
     },
-    outDir: resolve(__dirname, "dist"),
+    outDir: resolve(import.meta.dirname, "dist"),
     chunkSizeWarningLimit: 5000000,
   },
   server: {
@@ -34,19 +43,22 @@ export default defineConfig({
     dir: "./src/tests",
     globals: true,
     environment: "jsdom",
+    setupFiles: ["./src/tests/setup.ts"],
     coverage: {
       exclude: [
         "docs",
         "plugins",
         "scripts",
         "dist",
+        "dev-dist",
 
         // テストコード
         "src/tests",
 
         // 設定ファイル
         "vite.config.mts",
-        "webpack.config.cjs",
+        "vite.config-pwa.mts",
+        "webpack.config.mjs",
         ".*.*",
         "**/*.d.ts",
         "**/*.vue",

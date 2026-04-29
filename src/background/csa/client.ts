@@ -6,18 +6,18 @@ import {
   emptyCSAPlayerStates,
   CSAGameResult,
   CSASpecialMove,
-} from "@/common/game/csa";
-import { CSAProtocolVersion, CSAServerSettings } from "@/common/settings/csa";
-import { Socket } from "./socket";
-import { Logger } from "@/background/log";
-import { t } from "@/common/i18n";
+} from "@/common/game/csa.js";
+import { CSAProtocolVersion, CSAServerSettings } from "@/common/settings/csa.js";
+import { Socket } from "./socket.js";
+import { Logger } from "@/background/log.js";
+import { t } from "@/common/i18n/index.js";
 import {
   Command,
   CommandHistory,
   addCommand,
   newCommand,
   CommandType,
-} from "@/common/advanced/command";
+} from "@/common/advanced/command.js";
 
 type GameSummaryCallback = (gameSummary: CSAGameSummary) => void;
 type RejectCallback = () => void;
@@ -72,10 +72,14 @@ export class Client {
   private blankLinePingTimeout: NodeJS.Timeout | null = null;
 
   constructor(
-    private sessionID: number,
+    private _sessionID: number,
     private _settings: CSAServerSettings,
     private logger: Logger,
   ) {}
+
+  get sessionID(): number {
+    return this._sessionID;
+  }
 
   get settings(): CSAServerSettings {
     return this._settings;
@@ -357,7 +361,7 @@ export class Client {
       this.onGamePosition(command);
     } else if (this.state === State.PLAYING) {
       this.onMove(command);
-    } else if (command.match(/^LOGIN:.* OK$/)) {
+    } else if (/^LOGIN:.* OK$/.test(command)) {
       this.onLoginOK();
     } else if (command === "LOGIN:incorrect") {
       this.onLoginIncorrect();

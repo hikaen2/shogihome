@@ -1,8 +1,8 @@
-import { parseUSIPV } from "@/common/game/usi";
-import { Player, SearchHandler } from "@/renderer/players/player";
-import { PlayerSettings } from "@/common/settings/player";
+import { parseUSIPV } from "@/common/game/usi.js";
+import { Player, SearchHandler } from "@/renderer/players/player.js";
+import { PlayerSettings } from "@/common/settings/player.js";
 import { ImmutablePosition, Move } from "tsshogi";
-import { TimeStates } from "@/common/game/time";
+import { TimeStates } from "@/common/game/time.js";
 
 export type MoveWithOption = {
   usi: string;
@@ -21,8 +21,10 @@ export function createMockPlayer(moves: { [usi: string]: MoveWithOption }) {
     readyNewGame: vi.fn(() => Promise.resolve()),
     startSearch: vi.fn((p: ImmutablePosition, usi: string, t: TimeStates, h: SearchHandler) => {
       const m = moves[usi];
+      if (!m) {
+        throw new Error("unexpected USI: " + usi);
+      }
       if (m.usi === "no-reply") {
-        // eslint-disable-next-line  @typescript-eslint/no-empty-function
         return new Promise<void>(() => {});
       }
       if (m.usi === "resign") {
@@ -63,5 +65,11 @@ export function createMockPlayerBuilder(playerMap: { [uri: string]: Player }) {
       }
       return new Promise<Player>((resolve) => resolve(player));
     }),
+  };
+}
+
+export function createErrorPlayerBuilder() {
+  return {
+    build: vi.fn().mockImplementation(() => Promise.reject(new Error("failed to create player"))),
   };
 }

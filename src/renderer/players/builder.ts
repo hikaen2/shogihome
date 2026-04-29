@@ -1,14 +1,16 @@
-import { PlayerSettings } from "@/common/settings/player";
-import { humanPlayer } from "./human";
-import { Player, SearchInfo } from "./player";
-import { USIPlayer } from "./usi";
-import * as uri from "@/common/uri";
+import { PlayerSettings } from "@/common/settings/player.js";
+import { humanPlayer } from "./human.js";
+import { Player, SearchInfo } from "./player.js";
+import { USIPlayer } from "./usi.js";
+import { BasicPlayer } from "./basic.js";
+import * as uri from "@/common/uri.js";
+import { USIEngineLaunchOptions } from "@/common/settings/usi.js";
 
 export interface PlayerBuilder {
   build(playerSettings: PlayerSettings, onSearchInfo?: (info: SearchInfo) => void): Promise<Player>;
 }
 
-export function defaultPlayerBuilder(engineTimeoutSeconds?: number): PlayerBuilder {
+export function defaultPlayerBuilder(options?: USIEngineLaunchOptions): PlayerBuilder {
   return {
     async build(
       playerSettings: PlayerSettings,
@@ -16,8 +18,10 @@ export function defaultPlayerBuilder(engineTimeoutSeconds?: number): PlayerBuild
     ): Promise<Player> {
       if (playerSettings.uri === uri.ES_HUMAN) {
         return humanPlayer;
+      } else if (uri.isBasicEngine(playerSettings.uri)) {
+        return new BasicPlayer(playerSettings.uri);
       } else if (uri.isUSIEngine(playerSettings.uri) && playerSettings.usi) {
-        const player = new USIPlayer(playerSettings.usi, engineTimeoutSeconds ?? 10, onSearchInfo);
+        const player = new USIPlayer(playerSettings.usi, options, onSearchInfo);
         await player.launch();
         return player;
       }

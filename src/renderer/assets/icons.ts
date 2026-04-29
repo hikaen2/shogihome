@@ -1,4 +1,4 @@
-import preloadImage from "./preload";
+import preloadImage from "./preload.js";
 
 export enum IconType {
   BUSY = "busy",
@@ -60,6 +60,8 @@ export enum IconType {
   SHARE = "share",
   EQUALIZER = "equalizer",
   REFRESH = "refresh",
+  ROBOT = "robot",
+  TRASH = "trash",
 }
 
 export const iconSourceMap = {
@@ -122,6 +124,8 @@ export const iconSourceMap = {
   [IconType.SHARE]: "icon/share_FILL0.svg",
   [IconType.EQUALIZER]: "icon/instant_mix_FILL0.svg",
   [IconType.REFRESH]: "icon/refresh_FILL0.svg",
+  [IconType.ROBOT]: "icon/smart_toy_FILL0.svg",
+  [IconType.TRASH]: "icon/delete_FILL0.svg",
 };
 
 Object.values(iconSourceMap).forEach((source) => {

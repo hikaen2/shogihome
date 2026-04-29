@@ -4,16 +4,19 @@ import {
   BackgroundImageType,
   BoardImageType,
   BoardLabelType,
+  BranchListMode,
   ClockSoundTarget,
   EvaluationViewFrom,
   KingPieceType,
   LeftSideControlType,
+  NodeCountFormat,
   PieceImageType,
   PieceStandImageType,
-  PositionImageFontWeight,
   PositionImageHandLabelType,
   PositionImageStyle,
   PositionImageTypeface,
+  PromotionSelectorStyle,
+  RecordShortcutKeys,
   RightSideControlType,
   Tab,
   TabPaneType,
@@ -22,13 +25,14 @@ import {
   buildUpdatedAppSettings,
   defaultAppSettings,
   validateAppSettings,
-} from "@/common/settings/app";
+} from "@/common/settings/app.js";
 import { UnwrapNestedRefs, reactive } from "vue";
-import api from "@/renderer/ipc/api";
-import { LogLevel } from "@/common/log";
-import { Language } from "@/common/i18n";
-import { RecordFileFormat } from "@/common/file/record";
-import { BoardLayoutType } from "@/common/settings/layout";
+import api from "@/renderer/ipc/api.js";
+import { LogLevel } from "@/common/log.js";
+import { Language } from "@/common/i18n/index.js";
+import { RecordFileFormat } from "@/common/file/record.js";
+import { BoardLayoutType, PositionImageFontWeight } from "@/common/settings/layout.js";
+import { SearchCommentFormat } from "@/common/settings/comment.js";
 
 class AppSettingsStore {
   private settings = defaultAppSettings();
@@ -77,8 +81,14 @@ class AppSettingsStore {
   get boardImageFileURL(): string | undefined {
     return this.merged.boardImageFileURL;
   }
+  get boardGridColor(): string | null {
+    return this.merged.boardGridColor;
+  }
   get pieceStandImage(): PieceStandImageType {
     return this.merged.pieceStandImage;
+  }
+  get promotionSelectorStyle(): PromotionSelectorStyle {
+    return this.merged.promotionSelectorStyle;
   }
   get pieceStandImageFileURL(): string | undefined {
     return this.merged.pieceStandImageFileURL;
@@ -116,6 +126,9 @@ class AppSettingsStore {
   get clockSoundTarget(): ClockSoundTarget {
     return this.merged.clockSoundTarget;
   }
+  get recordShortcutKeys(): RecordShortcutKeys {
+    return this.merged.recordShortcutKeys;
+  }
   get boardFlipping(): boolean {
     return this.merged.boardFlipping;
   }
@@ -146,6 +159,7 @@ class AppSettingsStore {
   get returnCode(): string {
     return this.merged.returnCode;
   }
+  // Deprecated
   get autoSaveDirectory(): string {
     return this.merged.autoSaveDirectory;
   }
@@ -155,11 +169,30 @@ class AppSettingsStore {
   get useCSAV3(): boolean {
     return this.merged.useCSAV3;
   }
+  get useUTF8ForKifAndKi2(): boolean {
+    return this.merged.useUTF8ForKifAndKi2;
+  }
   get enableUSIFileStartpos(): boolean {
     return this.merged.enableUSIFileStartpos;
   }
+  // Deprecated
   get enableUSIFileResign(): boolean {
     return this.merged.enableUSIFileResign;
+  }
+  get enableUSIFileSpecialMoves(): boolean {
+    return this.merged.enableUSIFileSpecialMoves;
+  }
+  get showPasteDialog(): boolean {
+    return this.merged.showPasteDialog;
+  }
+  get liveDuplicatePositionDetection(): boolean {
+    return this.merged.liveDuplicatePositionDetection;
+  }
+  get bookOnTheFlyThresholdMB(): number {
+    return this.merged.bookOnTheFlyThresholdMB;
+  }
+  get flippedBook(): boolean {
+    return this.merged.flippedBook;
   }
   get translateEngineOptionName(): boolean {
     return this.merged.translateEngineOptionName;
@@ -167,11 +200,23 @@ class AppSettingsStore {
   get engineTimeoutSeconds(): number {
     return this.merged.engineTimeoutSeconds;
   }
+  get nodeCountFormat(): NodeCountFormat {
+    return this.merged.nodeCountFormat;
+  }
+  get showEngineOptionDetails(): boolean {
+    return this.merged.showEngineOptionDetails;
+  }
   get evaluationViewFrom(): EvaluationViewFrom {
     return this.merged.evaluationViewFrom;
   }
   get maxArrowsPerEngine(): number {
     return this.merged.maxArrowsPerEngine;
+  }
+  get arrowScoreDiffRange(): number {
+    return this.merged.arrowScoreDiffRange;
+  }
+  get showArrowScore(): boolean {
+    return this.merged.showArrowScore;
   }
   get coefficientInSigmoid(): number {
     return this.merged.coefficientInSigmoid;
@@ -191,11 +236,17 @@ class AppSettingsStore {
   get maxPVTextLength(): number {
     return this.merged.maxPVTextLength;
   }
+  get searchCommentFormat(): SearchCommentFormat {
+    return this.merged.searchCommentFormat;
+  }
   get showElapsedTimeInRecordView(): boolean {
     return this.merged.showElapsedTimeInRecordView;
   }
   get showCommentInRecordView(): boolean {
     return this.merged.showCommentInRecordView;
+  }
+  get branchListMode(): BranchListMode {
+    return this.merged.branchListMode;
   }
   get enableAppLog(): boolean {
     return this.merged.enableAppLog;
@@ -239,6 +290,9 @@ class AppSettingsStore {
   get lastRecordFilePath(): string {
     return this.merged.lastRecordFilePath;
   }
+  get lastBookFilePath(): string {
+    return this.merged.lastBookFilePath;
+  }
   get lastUSIEngineFilePath(): string {
     return this.merged.lastUSIEngineFilePath;
   }
@@ -250,6 +304,9 @@ class AppSettingsStore {
   }
   get emptyRecordInfoVisibility(): boolean {
     return this.merged.emptyRecordInfoVisibility;
+  }
+  get enableHardwareAcceleration(): boolean {
+    return this.merged.enableHardwareAcceleration;
   }
 
   async loadAppSettings(): Promise<void> {

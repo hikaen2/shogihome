@@ -5,8 +5,8 @@ html {
 body {
   -webkit-text-size-adjust: 100%;
   font-size: 16px;
-  font-family: "ヒラギノ角ゴ ProN W3", "Hiragino Kaku Gothic ProN", "メイリオ", "Meiryo", "verdana",
-    sans-serif;
+  font-family:
+    "ヒラギノ角ゴ ProN W3", "Hiragino Kaku Gothic ProN", "メイリオ", "Meiryo", "verdana", sans-serif;
   background-color: white;
   margin: 0px;
   padding: 0px;
@@ -67,7 +67,7 @@ nav li {
 article {
   color: darkslategray;
   margin: 0px;
-  padding: 1em 5% 1em 5%;
+  padding: 1em 0 1em 0;
 }
 
 article a {
@@ -76,8 +76,13 @@ article a {
 }
 
 section {
-  margin: 1em 0 7em 0;
-  scroll-margin-top: 120px;
+  margin: 0;
+  padding: 1em 0 7em 0;
+  scroll-margin-top: 40px;
+}
+
+section.bg2 {
+  background: #e0e6e6;
 }
 
 section div {
@@ -144,7 +149,7 @@ li {
 ul.faq {
   margin-left: auto;
   margin-right: auto;
-  width: min(90vw, 110vh);
+  width: min(90vw, 110vh, 1400px);
   text-align: left;
 }
 
@@ -159,7 +164,7 @@ ul.faq li li {
 .long-text {
   margin-left: auto;
   margin-right: auto;
-  width: min(90vw, 110vh);
+  width: min(90vw, 110vh, 1400px);
   text-align: left;
 }
 
@@ -204,11 +209,23 @@ img.icon {
   margin: 0px;
 }
 
+.title img.icon {
+  filter: drop-shadow(1px 1px 8px #1f4343);
+}
+
+.title > div {
+  text-shadow: 1px 1px 8px #1f4343;
+}
+
 img.small-icon {
   width: auto;
   height: 1em;
   vertical-align: -0.2em;
   margin: 0px;
+}
+
+.slides {
+  margin-top: 5em;
 }
 
 .row {

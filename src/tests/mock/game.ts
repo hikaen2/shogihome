@@ -1,4 +1,5 @@
-import { GameSettings, JishogiRule } from "@/common/settings/game";
+import { SearchCommentFormat } from "@/common/settings/comment.js";
+import { GameSettings, JishogiRule } from "@/common/settings/game.js";
 import { InitialPositionType } from "tsshogi";
 
 export const playerURI01 = "es://usi/test-engine-01";
@@ -45,12 +46,20 @@ export const gameSettings10m30s: GameSettings = {
   white: whitePlayerSettings,
   timeLimit: timeLimitSettings,
   startPosition: InitialPositionType.STANDARD,
+  startPositionSFEN: "",
+  startPositionListFile: "",
+  startPositionListOrder: "sequential",
   enableEngineTimeout: false,
   humanIsFront: false,
   enableComment: true,
   enableAutoSave: true,
   repeat: 1,
   swapPlayers: true,
+  parallelism: 1,
   maxMoves: 1000,
   jishogiRule: JishogiRule.NONE,
+  autoSaveDirectory: "",
+  searchCommentFormat: SearchCommentFormat.SHOGIHOME,
+  sprtEnabled: false,
+  sprt: { elo0: 0, elo1: 3, alpha: 0.05, beta: 0.05, maxGames: 10000 },
 };

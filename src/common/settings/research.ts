@@ -1,5 +1,5 @@
-import { t } from "@/common/i18n";
-import { USIEngine } from "./usi";
+import { t } from "@/common/i18n/index.js";
+import { USIEngine } from "./usi.js";
 
 export type SecondaryResearchSettings = {
   usi?: USIEngine;
@@ -10,12 +10,16 @@ export type ResearchSettings = {
   secondaries?: SecondaryResearchSettings[];
   enableMaxSeconds: boolean;
   maxSeconds: number;
+  overrideMultiPV: boolean;
+  multiPV: number;
 };
 
 export function defaultResearchSettings(): ResearchSettings {
   return {
     enableMaxSeconds: false,
     maxSeconds: 10,
+    overrideMultiPV: false,
+    multiPV: 1,
   };
 }
 

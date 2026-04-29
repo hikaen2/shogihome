@@ -1,34 +1,44 @@
-import { USIEngine, USIEngines } from "@/common/settings/usi";
-import { GameSettings } from "@/common/settings/game";
-import { AppSettings } from "@/common/settings/app";
-import { webAPI } from "./web";
-import { ResearchSettings } from "@/common/settings/research";
-import { AppState, ResearchState } from "@/common/control/state";
-import { GameResult } from "@/common/game/result";
-import { AnalysisSettings } from "@/common/settings/analysis";
-import { LogLevel, LogType } from "@/common/log";
-import { CSAGameSettingsHistory, CSAServerSettings } from "@/common/settings/csa";
-import { Rect } from "@/common/assets/geometry";
-import { MateSearchSettings } from "@/common/settings/mate";
-import { BatchConversionSettings } from "@/common/settings/conversion";
-import { BatchConversionResult } from "@/common/file/conversion";
-import { RecordFileHistory } from "@/common/file/history";
-import { InitialRecordFileRequest } from "@/common/file/record";
-import { VersionStatus } from "@/background/version/types";
-import { SessionStates } from "@/common/advanced/monitor";
-import { PromptTarget } from "@/common/advanced/prompt";
-import { CommandHistory, CommandType } from "@/common/advanced/command";
-import { Bridge } from "./bridge";
-import { TimeStates } from "@/common/game/time";
-import { LayoutProfileList } from "@/common/settings/layout";
+import {
+  USIEngine,
+  USIEngineLaunchOptions,
+  USIEngineMetadata,
+  USIEngines,
+} from "@/common/settings/usi.js";
+import { GameSettings } from "@/common/settings/game.js";
+import { AppSettings } from "@/common/settings/app.js";
+import { webAPI } from "./web.js";
+import { ResearchSettings } from "@/common/settings/research.js";
+import { AppState, ResearchState } from "@/common/control/state.js";
+import { GameResult } from "@/common/game/result.js";
+import { AnalysisSettings } from "@/common/settings/analysis.js";
+import { LogLevel, LogType } from "@/common/log.js";
+import { CSAGameSettingsHistory, CSAServerSettings } from "@/common/settings/csa.js";
+import { Rect } from "@/common/assets/geometry.js";
+import { MateSearchSettings } from "@/common/settings/mate.js";
+import { BatchConversionSettings } from "@/common/settings/conversion.js";
+import { BatchConversionResult } from "@/common/file/conversion.js";
+import { RecordFileHistory } from "@/common/file/history.js";
+import { RecordFileFormat } from "@/common/file/record.js";
+import { VersionStatus } from "@/common/version.js";
+import { MachineSpec, SessionStates } from "@/common/advanced/monitor.js";
+import { PromptTarget } from "@/common/advanced/prompt.js";
+import { CommandHistory, CommandType } from "@/common/advanced/command.js";
+import { Bridge } from "./bridge.js";
+import { TimeStates } from "@/common/game/time.js";
+import { LayoutProfileList } from "@/common/settings/layout.js";
+import { BookFormat, BookImportSummary, BookLoadingOptions, BookMove } from "@/common/book.js";
+import { BookImportSettings } from "@/common/settings/book.js";
+import { ProcessArgs } from "@/common/ipc/process.js";
 
 type AppInfo = {
   appVersion?: string;
+  buildVersion?: string;
 };
 
 export interface API {
   // Core
   updateAppState(appState: AppState, researchState: ResearchState, busy: boolean): void;
+  fetchProcessArgs(): Promise<ProcessArgs>;
 
   // Settings
   loadAppSettings(): Promise<AppSettings>;
@@ -47,10 +57,11 @@ export interface API {
   saveMateSearchSettings(settings: MateSearchSettings): Promise<void>;
   loadUSIEngines(): Promise<USIEngines>;
   saveUSIEngines(usiEngines: USIEngines): Promise<void>;
+  loadBookImportSettings(): Promise<BookImportSettings>;
+  saveBookImportSettings(settings: BookImportSettings): Promise<void>;
 
   // Record File
-  fetchInitialRecordFileRequest(): Promise<InitialRecordFileRequest>;
-  showOpenRecordDialog(): Promise<string>;
+  showOpenRecordDialog(formats: RecordFileFormat[]): Promise<string>;
   showSaveRecordDialog(defaultPath: string): Promise<string>;
   showSaveMergedRecordDialog(defaultPath: string): Promise<string>;
   openRecord(path: string): Promise<Uint8Array>;
@@ -60,20 +71,40 @@ export interface API {
   clearRecordFileHistory(): Promise<void>;
   saveRecordFileBackup(kif: string): Promise<void>;
   loadRecordFileBackup(name: string): Promise<string>;
-  loadRemoteRecordFile(url: string): Promise<string>;
+  loadRemoteTextFile(url: string): Promise<string>;
   convertRecordFiles(settings: BatchConversionSettings): Promise<BatchConversionResult>;
+  showSelectSFENDialog(lastPath: string): Promise<string>;
+  loadSFENFile(path: string): Promise<string[]>;
+
+  // Book
+  showOpenBookDialog(): Promise<string>;
+  showSaveBookDialog(session: number, targetFormat?: BookFormat): Promise<string>;
+  openBook(session: number, path: string, options: BookLoadingOptions): Promise<void>;
+  openBookAsNewSession(path: string, options: BookLoadingOptions): Promise<number>;
+  closeBookSession(session: number): Promise<void>;
+  saveBook(session: number, path: string): Promise<void>;
+  exportBook(session: number, path: string, targetFormat: BookFormat): Promise<void>;
+  clearBook(session: number, format?: BookFormat): Promise<void>;
+  getBookFormat(session: number): Promise<BookFormat>;
+  searchBookMoves(session: number, sfen: string): Promise<BookMove[]>;
+  updateBookMove(session: number, sfen: string, move: BookMove): Promise<void>;
+  removeBookMove(session: number, sfen: string, usi: string): Promise<void>;
+  updateBookMoveOrder(session: number, sfen: string, usi: string, order: number): Promise<void>;
+  importBookMoves(session: number, settings: BookImportSettings): Promise<BookImportSummary>;
 
   // USI
   showSelectUSIEngineDialog(): Promise<string>;
   getUSIEngineInfo(path: string, timeoutSeconds: number): Promise<USIEngine>;
-  sendUSISetOption(path: string, name: string, timeoutSeconds: number): Promise<void>;
-  usiLaunch(engine: USIEngine, timeoutSeconds: number): Promise<number>;
+  getUSIEngineMetadata(path: string): Promise<USIEngineMetadata>;
+  sendUSIOptionButtonSignal(path: string, name: string, timeoutSeconds: number): Promise<void>;
+  usiLaunch(engine: USIEngine, options?: USIEngineLaunchOptions): Promise<number>;
   usiReady(sessionID: number): Promise<void>;
+  usiSetOption(sessionID: number, name: string, value: string): Promise<void>;
   usiGo(sessionID: number, usi: string, timeStates: TimeStates): Promise<void>;
   usiGoPonder(sessionID: number, usi: string, timeStates: TimeStates): Promise<void>;
   usiPonderHit(sessionID: number, timeStates: TimeStates): Promise<void>;
   usiGoInfinite(sessionID: number, usi: string): Promise<void>;
-  usiGoMate(sessionID: number, usi: string): Promise<void>;
+  usiGoMate(sessionID: number, usi: string, maxSeconds?: number): Promise<void>;
   usiStop(sessionID: number): Promise<void>;
   usiGameover(sessionID: number, result: GameResult): Promise<void>;
   usiQuit(sessionID: number): Promise<void>;
@@ -107,6 +138,7 @@ export interface API {
   // Layout
   loadLayoutProfileList(): Promise<[string, LayoutProfileList]>;
   updateLayoutProfileList(uri: string, profileList: LayoutProfileList): void;
+  createDesktopShortcutForLayoutProfile(uri: string, name: string): Promise<void>;
 
   // Log
   openLogFile(logType: LogType): void;
@@ -117,9 +149,11 @@ export interface API {
   showSelectDirectoryDialog(defaultPath?: string): Promise<string>;
   openExplorer(path: string): void;
   openWebBrowser(url: string): void;
+  getMachineSpec(): Promise<MachineSpec>;
   isEncryptionAvailable(): Promise<boolean>;
   getVersionStatus(): Promise<VersionStatus>;
   sendTestNotification(): void;
+  getPathForFile(file: File): string;
 }
 
 interface ExtendedWindow extends Window {
@@ -137,6 +171,11 @@ export const bridge: Bridge = getWindowObject().electronShogiAPI || webAPI;
 
 const api: API = {
   ...bridge,
+
+  // Core
+  async fetchProcessArgs(): Promise<ProcessArgs> {
+    return JSON.parse(await bridge.fetchProcessArgs());
+  },
 
   // Settings
   async loadAppSettings(): Promise<AppSettings> {
@@ -190,21 +229,49 @@ const api: API = {
   saveUSIEngines(usiEngines: USIEngines): Promise<void> {
     return bridge.saveUSIEngines(usiEngines.json);
   },
+  async loadBookImportSettings(): Promise<BookImportSettings> {
+    return JSON.parse(await bridge.loadBookImportSettings());
+  },
+  saveBookImportSettings(settings: BookImportSettings): Promise<void> {
+    return bridge.saveBookImportSettings(JSON.stringify(settings));
+  },
 
   // Record File
-  async fetchInitialRecordFileRequest(): Promise<InitialRecordFileRequest> {
-    return JSON.parse(await bridge.fetchInitialRecordFileRequest());
-  },
   async convertRecordFiles(settings: BatchConversionSettings): Promise<BatchConversionResult> {
     return JSON.parse(await bridge.convertRecordFiles(JSON.stringify(settings)));
   },
 
+  // Book
+  async getBookFormat(session: number): Promise<BookFormat> {
+    return await bridge.getBookFormat(session);
+  },
+  openBook(session: number, path: string, options: BookLoadingOptions): Promise<void> {
+    return bridge.openBook(session, path, JSON.stringify(options));
+  },
+  async openBookAsNewSession(path: string, options: BookLoadingOptions): Promise<number> {
+    return await bridge.openBookAsNewSession(path, JSON.stringify(options));
+  },
+  async searchBookMoves(session: number, sfen: string): Promise<BookMove[]> {
+    return JSON.parse(await bridge.searchBookMoves(session, sfen));
+  },
+  updateBookMove(session: number, sfen: string, move: BookMove): Promise<void> {
+    return bridge.updateBookMove(session, sfen, JSON.stringify(move));
+  },
+  async importBookMoves(session: number, settings: BookImportSettings): Promise<BookImportSummary> {
+    return JSON.parse(await bridge.importBookMoves(session, JSON.stringify(settings)));
+  },
+
   // USI
   async getUSIEngineInfo(path: string, timeoutSeconds: number): Promise<USIEngine> {
-    return JSON.parse(await bridge.getUSIEngineInfo(path, timeoutSeconds));
+    const engine = await bridge.getUSIEngineInfo(path, timeoutSeconds);
+    return JSON.parse(engine);
   },
-  usiLaunch(engine: USIEngine, timeoutSeconds: number): Promise<number> {
-    return bridge.usiLaunch(JSON.stringify(engine), timeoutSeconds);
+  async getUSIEngineMetadata(path: string): Promise<USIEngineMetadata> {
+    const metadata = await bridge.getUSIEngineMetadata(path);
+    return JSON.parse(metadata);
+  },
+  usiLaunch(engine: USIEngine, options?: USIEngineLaunchOptions): Promise<number> {
+    return bridge.usiLaunch(JSON.stringify(engine), JSON.stringify(options || {}));
   },
   usiReady(sessionID: number): Promise<void> {
     return bridge.usiReady(sessionID);
@@ -250,6 +317,9 @@ const api: API = {
   },
 
   // MISC
+  async getMachineSpec(): Promise<MachineSpec> {
+    return JSON.parse(await bridge.getMachineSpec());
+  },
   async getVersionStatus(): Promise<VersionStatus> {
     return JSON.parse(await bridge.getVersionStatus());
   },

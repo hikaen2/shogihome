@@ -1,9 +1,14 @@
-import { CSAServerSettings } from "@/common/settings/csa";
-import { getCSALogger } from "@/background/log";
-import { Client, State } from "@/background/csa/client";
-import { CSASessionState } from "@/common/advanced/monitor";
-import { CommandHistory, CommandType, Command } from "@/common/advanced/command";
-import { CSAGameResult, CSAGameSummary, CSAPlayerStates, CSASpecialMove } from "@/common/game/csa";
+import { CSAServerSettings } from "@/common/settings/csa.js";
+import { getCSALogger } from "@/background/log.js";
+import { Client, State } from "@/background/csa/client.js";
+import { CSASessionState } from "@/common/advanced/monitor.js";
+import { CommandHistory, CommandType, Command } from "@/common/advanced/command.js";
+import {
+  CSAGameResult,
+  CSAGameSummary,
+  CSAPlayerStates,
+  CSASpecialMove,
+} from "@/common/game/csa.js";
 
 interface Handlers {
   onCSAGameSummary(sessionID: number, gameSummary: CSAGameSummary): void;
@@ -33,6 +38,21 @@ function issueSessionID(): number {
 }
 
 const clients = new Map<number, Client>();
+let sessionRemoveDelay = 20e3;
+
+export function setSessionRemoveDelay(delay: number): void {
+  sessionRemoveDelay = delay;
+}
+
+function registerClient(client: Client): void {
+  clients.set(client.sessionID, client);
+}
+
+function unregisterClient(sessionID: number): void {
+  setTimeout(() => {
+    clients.delete(sessionID);
+  }, sessionRemoveDelay);
+}
 
 export function login(settings: CSAServerSettings): number {
   const sessionID = issueSessionID();
@@ -45,16 +65,14 @@ export function login(settings: CSAServerSettings): number {
       h.onCSAGameResult(sessionID, specialMove, gameResult),
     )
     .on("close", () => {
-      setTimeout(() => {
-        clients.delete(sessionID);
-      }, 10e3); // remove 10 seconds later
+      unregisterClient(sessionID);
       h.onCSAClose(sessionID);
     })
     .on("error", h.sendError)
     .on("command", (command) => {
       h.sendPromptCommand(sessionID, command);
     });
-  clients.set(sessionID, client);
+  registerClient(client);
   client.login();
   return sessionID;
 }

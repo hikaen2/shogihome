@@ -1,2 +1,5 @@
-#!/usr/bin/env bash
-node $(dirname $0)/dummy-usi-engine.mjs
+#!/bin/bash -eu
+set -o pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+node "$DIR/dummy-usi-engine.mjs"

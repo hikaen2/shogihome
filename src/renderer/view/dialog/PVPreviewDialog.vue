@@ -1,77 +1,81 @@
 <template>
-  <div>
-    <dialog ref="dialog">
-      <BoardView
-        class="board-view"
-        :board-image-type="appSettings.boardImage"
-        :piece-stand-image-type="appSettings.pieceStandImage"
-        :piece-image-url-template="getPieceImageURLTemplate(appSettings)"
-        :king-piece-type="appSettings.kingPieceType"
-        :board-label-type="appSettings.boardLabelType"
-        :custom-board-image-url="appSettings.boardImageFileURL"
-        :custom-piece-stand-image-url="appSettings.pieceStandImageFileURL"
-        :max-size="maxSize"
-        :position="record.position"
-        :last-move="lastMove"
-        :flip="flip"
-        :black-player-name="t.sente"
-        :white-player-name="t.gote"
-      >
-        <template #right-control>
-          <div class="full column">
-            <div class="row control-row">
-              <button class="control-item" data-hotkey="Mod+t" @click="doFlip">
-                <Icon :icon="IconType.FLIP" />
-              </button>
-              <button class="control-item" autofocus data-hotkey="Escape" @click="onClose">
-                <Icon :icon="IconType.CLOSE" />
-              </button>
-            </div>
-            <div class="row control-row">
-              <button class="control-item" data-hotkey="ArrowLeft" @click="goBegin">
-                <Icon :icon="IconType.FIRST" />
-              </button>
-              <button class="control-item" data-hotkey="ArrowRight" @click="goEnd">
-                <Icon :icon="IconType.LAST" />
-              </button>
-            </div>
-            <div class="row control-row">
-              <button class="control-item" data-hotkey="ArrowUp" @click="goBack">
-                <Icon :icon="IconType.BACK" />
-              </button>
-              <button class="control-item" data-hotkey="ArrowDown" @click="goForward">
-                <Icon :icon="IconType.NEXT" />
-              </button>
-            </div>
-          </div>
-        </template>
-        <template #left-control>
-          <div class="full column reverse">
-            <button class="control-item-wide" :disabled="!enableInsertion" @click="insertToRecord">
-              <Icon :icon="IconType.TREE" />
-              <span>{{ t.insertToRecord }}</span>
+  <DialogFrame @cancel="onClose">
+    <BoardView
+      class="board-view"
+      :board-image-type="appSettings.boardImage"
+      :custom-board-image-url="
+        appSettings.boardImageFileURL && fileURLToCustomSchemeURL(appSettings.boardImageFileURL)
+      "
+      :board-grid-color="appSettings.boardGridColor || undefined"
+      :piece-stand-image-type="appSettings.pieceStandImage"
+      :custom-piece-stand-image-url="
+        appSettings.pieceStandImageFileURL &&
+        fileURLToCustomSchemeURL(appSettings.pieceStandImageFileURL)
+      "
+      :piece-image-url-template="getPieceImageURLTemplate(appSettings)"
+      :king-piece-type="appSettings.kingPieceType"
+      :board-label-type="appSettings.boardLabelType"
+      :max-size="maxSize"
+      :position="record.position"
+      :last-move="lastMove"
+      :flip="flip"
+      :black-player-name="t.sente"
+      :white-player-name="t.gote"
+    >
+      <template #right-control>
+        <div class="full column">
+          <div class="row control-row">
+            <button class="control-item" data-hotkey="Mod+t" @click="doFlip">
+              <Icon :icon="IconType.FLIP" />
             </button>
-            <button class="control-item-wide" :disabled="!enableInsertion" @click="insertToComment">
-              <Icon :icon="IconType.NOTE" />
-              <span>{{ t.insertToComment }}</span>
+            <button class="control-item" autofocus data-hotkey="Escape" @click="onClose">
+              <Icon :icon="IconType.CLOSE" />
             </button>
           </div>
-        </template>
-      </BoardView>
-      <div class="informations">
-        <div class="information">
-          {{ info }}
+          <div class="row control-row">
+            <button class="control-item" :data-hotkey="shortcutKeys.Begin" @click="goBegin">
+              <Icon :icon="IconType.FIRST" />
+            </button>
+            <button class="control-item" :data-hotkey="shortcutKeys.End" @click="goEnd">
+              <Icon :icon="IconType.LAST" />
+            </button>
+          </div>
+          <div class="row control-row">
+            <button class="control-item" :data-hotkey="shortcutKeys.Back" @click="goBack">
+              <Icon :icon="IconType.BACK" />
+            </button>
+            <button class="control-item" :data-hotkey="shortcutKeys.Forward" @click="goForward">
+              <Icon :icon="IconType.NEXT" />
+            </button>
+          </div>
         </div>
-        <div class="information">
-          <span v-for="(move, index) in displayPV" :key="index">
-            <span class="move-element" :class="{ selected: move.selected }"
-              >&nbsp;{{ move.text }}&nbsp;</span
-            >
-          </span>
+      </template>
+      <template #left-control>
+        <div class="full column reverse">
+          <button class="control-item-wide" :disabled="!enableInsertion" @click="insertToRecord">
+            <Icon :icon="IconType.TREE" />
+            <span>{{ t.insertToRecord }}</span>
+          </button>
+          <button class="control-item-wide" :disabled="!enableInsertion" @click="insertToComment">
+            <Icon :icon="IconType.NOTE" />
+            <span>{{ t.insertToComment }}</span>
+          </button>
         </div>
+      </template>
+    </BoardView>
+    <div class="informations">
+      <div class="information">
+        {{ info }}
       </div>
-    </dialog>
-  </div>
+      <div class="information">
+        <span v-for="(move, index) in displayPV" :key="index">
+          <span class="move-element" :class="{ selected: move.selected }"
+            >&nbsp;{{ move.text }}&nbsp;</span
+          >
+        </span>
+      </div>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
@@ -80,22 +84,28 @@ import { onMounted, PropType, ref, reactive, watch, onBeforeUnmount, computed } 
 import BoardView from "@/renderer/view/primitive/BoardView.vue";
 import Icon from "@/renderer/view/primitive/Icon.vue";
 import { RectSize } from "@/common/assets/geometry.js";
-import { showModalDialog } from "@/renderer/helpers/dialog.js";
 import { IconType } from "@/renderer/assets/icons";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
 import { useAppSettings } from "@/renderer/store/settings";
 import { EvaluationViewFrom, getPieceImageURLTemplate } from "@/common/settings/app";
 import { t } from "@/common/i18n";
 import { useStore } from "@/renderer/store";
-import { SearchInfoSenderType } from "@/renderer/store/record";
-import { CommentBehavior } from "@/common/settings/analysis";
+import { SearchInfoSenderType } from "@/renderer/record/manager";
+import { CommentBehavior } from "@/common/settings/comment";
 import { AppState } from "@/common/control/state";
 import { useMessageStore } from "@/renderer/store/message";
+import DialogFrame from "./DialogFrame.vue";
+import { getRecordShortcutKeys } from "@/renderer/view/primitive/board/shortcut";
+import { fileURLToCustomSchemeURL } from "@/common/url";
 
 const props = defineProps({
   position: {
     type: Object as PropType<ImmutablePosition>,
     required: true,
+  },
+  name: {
+    type: String,
+    required: false,
+    default: undefined,
   },
   multiPv: {
     type: Number,
@@ -145,7 +155,6 @@ const emit = defineEmits<{
 const store = useStore();
 const messageStore = useMessageStore();
 const appSettings = useAppSettings();
-const dialog = ref();
 const maxSize = reactive(new RectSize(0, 0));
 const record = reactive(new Record());
 const flip = ref(appSettings.boardFlipping);
@@ -167,13 +176,10 @@ onMounted(() => {
   updateSize();
   updateRecord();
   window.addEventListener("resize", updateSize);
-  showModalDialog(dialog.value, onClose);
-  installHotKeyForDialog(dialog.value);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", updateSize);
-  uninstallHotKeyForDialog(dialog.value);
 });
 
 watch([() => props.position, () => props.pv], () => {
@@ -210,6 +216,9 @@ const getDisplayScore = (score: number, color: Color, evaluationViewFrom: Evalua
 
 const info = computed(() => {
   const elements = [];
+  if (props.name) {
+    elements.push(`${props.name}`);
+  }
   if (props.depth !== undefined) {
     elements.push(`深さ=${props.depth}`);
   }
@@ -257,6 +266,8 @@ const enableInsertion = computed(() => {
   return store.appState === AppState.NORMAL && store.record.position.sfen === props.position.sfen;
 });
 
+const shortcutKeys = computed(() => getRecordShortcutKeys(appSettings.recordShortcutKeys));
+
 const insertToRecord = () => {
   const n = store.appendMovesSilently(props.pv, {
     ignoreValidation: true,
@@ -276,6 +287,7 @@ const insertToComment = () => {
       pv: props.pv,
     },
     CommentBehavior.APPEND,
+    { engineName: props.name },
   );
   messageStore.enqueue({
     text: t.insertedComment,

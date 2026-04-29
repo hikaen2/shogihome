@@ -1,5 +1,13 @@
-import { BrowserWindow, dialog, FileFilter, ipcMain, shell, WebContents } from "electron";
-import { Background, Renderer } from "@/common/ipc/channel";
+import {
+  BrowserWindow,
+  dialog,
+  FileFilter,
+  ipcMain,
+  powerSaveBlocker,
+  shell,
+  WebContents,
+} from "electron";
+import { Background, Renderer } from "@/common/ipc/channel.js";
 import path from "node:path";
 import { promises as fs } from "node:fs";
 import url from "node:url";
@@ -7,6 +15,7 @@ import {
   loadAnalysisSettings,
   loadAppSettings,
   loadBatchConversionSettings,
+  loadBookImportSettings,
   loadCSAGameSettingsHistory,
   loadGameSettings,
   loadLayoutProfileList,
@@ -16,27 +25,29 @@ import {
   saveAnalysisSettings,
   saveAppSettings,
   saveBatchConversionSettings,
+  saveBookImportSettings,
   saveCSAGameSettingsHistory,
   saveGameSettings,
   saveLayoutProfileList,
   saveMateSearchSettings,
   saveResearchSettings,
   saveUSIEngines,
-} from "@/background/settings";
-import { USIEngine, USIEngines } from "@/common/settings/usi";
-import { MenuEvent } from "@/common/control/menu";
-import { USIInfoCommand } from "@/common/game/usi";
-import { AppState, ResearchState } from "@/common/control/state";
+} from "@/background/settings.js";
+import { USIEngine, USIEngineLaunchOptions, USIEngines } from "@/common/settings/usi.js";
+import { MenuEvent } from "@/common/control/menu.js";
+import { USIInfoCommand } from "@/common/game/usi.js";
+import { AppState, ResearchState } from "@/common/control/state.js";
 import {
   gameover as usiGameover,
   getUSIEngineInfo as usiGetUSIEngineInfo,
+  setOption as usiSetOption,
   go as usiGo,
   goPonder as usiGoPonder,
   goInfinite as usiGoInfinite,
   goMate as usiGoMate,
   ponderHit as usiPonderHit,
   quit as usiQuit,
-  sendSetOptionCommand as usiSendSetOptionCommand,
+  sendOptionButtonSignal as usiSendOptionButtonSignal,
   setupPlayer as usiSetupPlayer,
   ready as usiReady,
   stop as usiStop,
@@ -44,10 +55,10 @@ import {
   getCommandHistory as getUSICommandHistory,
   invokeCommand as invokeUSICommand,
   setHandlers as setUSIHandlers,
-} from "@/background/usi";
-import { GameResult } from "@/common/game/result";
-import { LogLevel, LogType } from "@/common/log";
-import { getAppLogger, openLogFile } from "@/background/log";
+} from "@/background/usi/index.js";
+import { GameResult } from "@/common/game/result.js";
+import { LogLevel, LogType } from "@/common/log.js";
+import { getAppLogger, getFilePath as getLogFilePath } from "@/background/log.js";
 import {
   login as csaLogin,
   logout as csaLogout,
@@ -60,38 +71,70 @@ import {
   getCommandHistory as getCSACommandHistory,
   invokeCommand as invokeCSACommand,
   setHandlers,
-} from "@/background/csa";
-import { CSAGameResult, CSAGameSummary, CSAPlayerStates, CSASpecialMove } from "@/common/game/csa";
-import { CSAServerSettings } from "@/common/settings/csa";
-import { isEncryptionAvailable } from "@/background/helpers/encrypt";
-import { validateIPCSender } from "./security";
-import { t } from "@/common/i18n";
-import { Rect } from "@/common/assets/geometry";
-import { exportCaptureJPEG, exportCapturePNG } from "@/background/image/capture";
-import { cropPieceImage } from "@/background/image/cropper";
-import { getRelativeEnginePath, resolveEnginePath } from "@/background/usi/path";
-import { fileURLToPath } from "@/background/helpers/url";
-import { AppSettingsUpdate } from "@/common/settings/app";
-import { convertRecordFiles } from "@/background/file/conversion";
-import { BatchConversionSettings } from "@/common/settings/conversion";
+} from "@/background/csa/index.js";
+import {
+  CSAGameResult,
+  CSAGameSummary,
+  CSAPlayerStates,
+  CSASpecialMove,
+} from "@/common/game/csa.js";
+import { CSAServerSettings } from "@/common/settings/csa.js";
+import { isEncryptionAvailable } from "@/background/helpers/encrypt.js";
+import { validateIPCSender } from "@/background/security/ipc.js";
+import { t } from "@/common/i18n/index.js";
+import { Rect } from "@/common/assets/geometry.js";
+import { exportCaptureJPEG, exportCapturePNG } from "@/background/image/capture.js";
+import { cropPieceImage } from "@/background/image/cropper.js";
+import { getRelativeEnginePath, resolveEnginePath } from "@/background/usi/path.js";
+import { fileURLToPath } from "@/background/helpers/url.js";
+import { AppSettingsUpdate } from "@/common/settings/app.js";
+import { convertRecordFiles } from "@/background/file/conversion.js";
+import { BatchConversionSettings } from "@/common/settings/conversion.js";
 import {
   addHistory,
   clearHistory,
   getHistory,
   loadBackup,
   saveBackup,
-} from "@/background/file/history";
-import { getAppPath } from "@/background/proc/env";
-import { fetchInitialRecordFileRequest } from "@/background/proc/args";
-import { isSupportedRecordFilePath } from "@/background/file/extensions";
-import { readStatus as readVersionStatus } from "@/background/version/check";
-import { sendTestNotification } from "./debug";
-import { SessionStates } from "@/common/advanced/monitor";
-import { createCommandWindow } from "./prompt";
-import { PromptTarget } from "@/common/advanced/prompt";
-import { Command, CommandType } from "@/common/advanced/command";
-import { fetch } from "@/background/helpers/http";
-import * as uri from "@/common/uri";
+} from "@/background/file/history.js";
+import { getAppPath } from "@/background/proc/path-electron.js";
+import { isSupportedRecordFilePath } from "@/background/file/extensions.js";
+import { readStatus as readVersionStatus } from "@/background/version.js";
+import { sendTestNotification } from "./debug.js";
+import { SessionStates } from "@/common/advanced/monitor.js";
+import { createCommandWindow } from "./prompt.js";
+import { PromptTarget } from "@/common/advanced/prompt.js";
+import { Command, CommandType } from "@/common/advanced/command.js";
+import { fetch } from "@/background/helpers/http.js";
+import * as uri from "@/common/uri.js";
+import { openPath } from "@/background/helpers/electron.js";
+import {
+  clearBook,
+  closeBookSession,
+  exportBook,
+  getBookFormat,
+  importBookMoves,
+  isBookUnsaved,
+  openBook,
+  openBookAsNewSession,
+  removeBookMove,
+  saveBook,
+  searchBookMoves,
+  updateBookMove,
+  updateBookMoveOrder,
+} from "@/background/book/index.js";
+import { BookFormat, BookLoadingOptions, BookMove, defaultBookSession } from "@/common/book.js";
+import { Message } from "@/common/message.js";
+import { RecordFileFormat } from "@/common/file/record.js";
+import { LayoutProfileList } from "@/common/settings/layout.js";
+import { ProcessArgs } from "@/common/ipc/process.js";
+import { createDesktopShortcut } from "@/background/file/shortcuts.js";
+import { escapeFileName } from "@/common/file/path.js";
+import { collectOSState, getMachineSpec } from "@/background/proc/state.js";
+import { loadUSIEngineMeta } from "@/background/usi/metadata.js";
+import { Lazy } from "@/common/helpers/lazy.js";
+import { USIEngineStatsEntry } from "@/background/stats/types.js";
+import { updateUSIEngineStats } from "@/background/stats/persistence.js";
 
 const isWindows = process.platform === "win32";
 
@@ -111,20 +154,24 @@ export function isClosable(): boolean {
   return closable;
 }
 
-ipcMain.handle(Background.FETCH_INITIAL_RECORD_FILE_REQUEST, (event) => {
+let processArgs: ProcessArgs = {};
+let layoutURI = uri.ES_STANDARD_LAYOUT_PROFILE;
+
+export function setProcessArgs(args: ProcessArgs) {
+  processArgs = args;
+  if (args.layoutProfile) {
+    layoutURI = args.layoutProfile.uri;
+  }
+}
+
+ipcMain.handle(Background.FETCH_PROCESS_ARGS, (event) => {
   validateIPCSender(event.senderFrame);
-  return JSON.stringify(fetchInitialRecordFileRequest());
+  return JSON.stringify(processArgs);
 });
 
-const onUpdateAppStateHandlers: ((
-  state: AppState,
-  researchState: ResearchState,
-  busy: boolean,
-) => void)[] = [];
+const onUpdateAppStateHandlers: ((state: AppState, busy: boolean) => void)[] = [];
 
-export function onUpdateAppState(
-  handler: (state: AppState, researchState: ResearchState, busy: boolean) => void,
-): void {
+export function onUpdateAppState(handler: (state: AppState, busy: boolean) => void): void {
   onUpdateAppStateHandlers.push(handler);
 }
 
@@ -132,10 +179,12 @@ ipcMain.on(
   Background.UPDATE_APP_STATE,
   (event, state: AppState, researchState: ResearchState, busy: boolean) => {
     validateIPCSender(event.senderFrame);
-    getAppLogger().debug(`change app state: AppState=${state} BusyState=${busy}`);
+    getAppLogger().debug(
+      `change app state: AppState=${state} ResearchState=${researchState} BusyState=${busy}`,
+    );
     appState = state;
     for (const handler of onUpdateAppStateHandlers) {
-      handler(state, researchState, busy);
+      handler(state, busy);
     }
   },
 );
@@ -146,9 +195,9 @@ ipcMain.on(Background.OPEN_EXPLORER, async (event, targetPath: string) => {
     const fullPath = resolveEnginePath(targetPath);
     const stats = await fs.stat(fullPath);
     if (stats.isDirectory()) {
-      shell.openPath(fullPath);
+      await openPath(fullPath);
     } else {
-      shell.openPath(path.dirname(fullPath));
+      await openPath(path.dirname(fullPath));
     }
   } catch {
     sendError(new Error(t.failedToOpenDirectory(targetPath)));
@@ -157,26 +206,39 @@ ipcMain.on(Background.OPEN_EXPLORER, async (event, targetPath: string) => {
 
 ipcMain.on(Background.OPEN_WEB_BROWSER, (event, url: string) => {
   validateIPCSender(event.senderFrame);
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error();
+    }
+  } catch {
+    sendError(new Error("Invalid URL: External links must start with http:// or https://"));
+    return;
+  }
+  getAppLogger().debug(`open web browser: ${url}`);
   shell.openExternal(url);
 });
 
-ipcMain.handle(Background.SHOW_OPEN_RECORD_DIALOG, async (event): Promise<string> => {
-  validateIPCSender(event.senderFrame);
-  const appSettings = await loadAppSettings();
-  getAppLogger().debug(`show open-record dialog`);
-  const ret = await showOpenDialog(["openFile"], appSettings.lastRecordFilePath, [
-    {
-      name: t.recordFile,
-      extensions: ["kif", "kifu", "ki2", "ki2u", "csa", "jkf"],
-    },
-  ]);
-  if (ret) {
-    updateAppSettings({ lastRecordFilePath: ret });
-  }
-  return ret;
-});
+ipcMain.handle(
+  Background.SHOW_OPEN_RECORD_DIALOG,
+  async (event, formats: RecordFileFormat[]): Promise<string> => {
+    validateIPCSender(event.senderFrame);
+    const appSettings = await loadAppSettings();
+    getAppLogger().debug("show open-record dialog");
+    const ret = await showOpenDialog(["openFile"], appSettings.lastRecordFilePath, [
+      {
+        name: t.recordFile,
+        extensions: formats.map((format) => format.slice(1)),
+      },
+    ]);
+    if (ret) {
+      updateAppSettings({ lastRecordFilePath: ret });
+    }
+    return ret;
+  },
+);
 
-ipcMain.handle(Background.OPEN_RECORD, async (event, path: string): Promise<Uint8Array> => {
+ipcMain.handle(Background.OPEN_RECORD, async (event, path: string) => {
   validateIPCSender(event.senderFrame);
   if (!isSupportedRecordFilePath(path)) {
     throw new Error(t.fileExtensionNotSupported);
@@ -245,11 +307,12 @@ ipcMain.handle(
       throw new Error("failed to open dialog by unexpected error.");
     }
     const appSettings = await loadAppSettings();
+    const KIFEncoding = appSettings.useUTF8ForKifAndKi2 ? "UTF-8" : "Shift_JIS";
     const filters = [
-      { name: "KIF (Shift_JIS)", extensions: ["kif"] },
-      { name: "KIF (UTF-8)", extensions: ["kifu"] },
-      { name: "KI2 (Shift_JIS)", extensions: ["ki2"] },
-      { name: "KI2 (UTF-8)", extensions: ["ki2u"] },
+      { name: `KIF (${KIFEncoding})`, extensions: ["kif"] },
+      { name: "KIFU (UTF-8)", extensions: ["kifu"] },
+      { name: `KI2 (${KIFEncoding})`, extensions: ["ki2"] },
+      { name: "KI2U (UTF-8)", extensions: ["ki2u"] },
       { name: "CSA", extensions: ["csa"] },
       { name: "JSON Kifu Format", extensions: ["jkf"] },
     ];
@@ -334,7 +397,7 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(Background.LOAD_REMOTE_RECORD_FILE, async (event, url: string) => {
+ipcMain.handle(Background.LOAD_REMOTE_TEXT_FILE, async (event, url: string) => {
   validateIPCSender(event.senderFrame);
   return await fetch(url);
 });
@@ -366,7 +429,31 @@ ipcMain.handle(Background.EXPORT_CAPTURE_AS_JPEG, async (event, json: string): P
 ipcMain.handle(Background.CONVERT_RECORD_FILES, async (event, json: string): Promise<string> => {
   validateIPCSender(event.senderFrame);
   const settings = JSON.parse(json) as BatchConversionSettings;
-  return JSON.stringify(await convertRecordFiles(settings));
+  return JSON.stringify(await convertRecordFiles(settings, sendProgress));
+});
+
+ipcMain.handle(
+  Background.SHOW_SELECT_SFEN_DIALOG,
+  async (event, lastPath: string): Promise<string> => {
+    validateIPCSender(event.senderFrame);
+    getAppLogger().debug("show select-SFEN dialog");
+    const ret = await showOpenDialog(["openFile"], lastPath, [
+      { name: "SFEN", extensions: ["sfen"] },
+    ]);
+    return ret;
+  },
+);
+
+ipcMain.handle(Background.LOAD_SFEN_FILE, async (event, path: string): Promise<string[]> => {
+  validateIPCSender(event.senderFrame);
+  if (!path.endsWith(".sfen")) {
+    throw new Error(`${t.fileExtensionNotSupported}: ${path}`);
+  }
+  const data = await fs.readFile(path, "utf-8");
+  return data
+    .replace(/^\uFEFF/, "") // remove BOM
+    .split(/[\r\n]+/) // split by line
+    .filter((line) => line !== ""); // remove empty lines
 });
 
 ipcMain.handle(Background.LOAD_APP_SETTINGS, async (event): Promise<string> => {
@@ -488,7 +575,148 @@ ipcMain.handle(Background.LOAD_RECORD_FILE_BACKUP, async (event, name: string): 
   return await loadBackup(name);
 });
 
-let layoutURI = uri.ES_STANDARD_LAYOUT_PROFILE;
+ipcMain.handle(Background.SHOW_OPEN_BOOK_DIALOG, async (event): Promise<string> => {
+  validateIPCSender(event.senderFrame);
+  const appSettings = await loadAppSettings();
+  getAppLogger().debug("show open-book dialog");
+  const ret = await showOpenDialog(["openFile"], appSettings.lastBookFilePath, [
+    { name: "Book", extensions: ["db", "bin", "sbk"] },
+  ]);
+  if (ret) {
+    updateAppSettings({ lastBookFilePath: ret });
+  }
+  return ret;
+});
+
+ipcMain.handle(
+  Background.SHOW_SAVE_BOOK_DIALOG,
+  async (event, session: number, targetFormat?: BookFormat): Promise<string> => {
+    validateIPCSender(event.senderFrame);
+    const appSettings = await loadAppSettings();
+    getAppLogger().debug("show save-book dialog");
+    const fmt = targetFormat ?? getBookFormat(session);
+    const filter =
+      fmt === "yane2016"
+        ? { name: "YaneuraOu Book Database", extensions: ["db"] }
+        : fmt === "apery"
+          ? { name: "Apery Book", extensions: ["bin"] }
+          : { name: "Shogi Book", extensions: ["sbk"] };
+    const defaultPath = appSettings.lastBookFilePath.replace(/\.(db|bin|sbk)$/, "");
+    const ret = await showSaveDialog(defaultPath, [filter]);
+    if (ret) {
+      updateAppSettings({ lastBookFilePath: ret });
+    }
+    return ret;
+  },
+);
+
+ipcMain.handle(Background.CLEAR_BOOK, (event, session: number, format?: BookFormat) => {
+  validateIPCSender(event.senderFrame);
+  clearBook(session, format);
+});
+
+ipcMain.handle(
+  Background.OPEN_BOOK,
+  async (event, session: number, path: string, json: string): Promise<void> => {
+    validateIPCSender(event.senderFrame);
+    getAppLogger().debug(`open book: ${path}`);
+    const options = JSON.parse(json) as BookLoadingOptions;
+    await openBook(session, path, options);
+  },
+);
+
+ipcMain.handle(
+  Background.OPEN_BOOK_AS_NEW_SESSION,
+  async (event, path: string, json: string): Promise<number> => {
+    validateIPCSender(event.senderFrame);
+    getAppLogger().debug(`open book as new session: ${path}`);
+    const options = JSON.parse(json) as BookLoadingOptions;
+    const { session } = await openBookAsNewSession(path, options);
+    getAppLogger().debug(`new book session: ${session}`);
+    return session;
+  },
+);
+
+ipcMain.handle(Background.CLOSE_BOOK_SESSION, (event, session: number) => {
+  validateIPCSender(event.senderFrame);
+  getAppLogger().debug(`close book session: ${session}`);
+  closeBookSession(session);
+});
+
+ipcMain.handle(
+  Background.SAVE_BOOK,
+  async (event, session: number, path: string): Promise<void> => {
+    validateIPCSender(event.senderFrame);
+    getAppLogger().debug(`save book: ${path}`);
+    await saveBook(session, path);
+  },
+);
+
+ipcMain.handle(
+  Background.EXPORT_BOOK,
+  async (event, session: number, path: string, targetFormat: BookFormat): Promise<void> => {
+    validateIPCSender(event.senderFrame);
+    getAppLogger().debug(`export book: ${path} as ${targetFormat}`);
+    await exportBook(session, path, targetFormat);
+  },
+);
+
+ipcMain.handle(Background.GET_BOOK_FORMAT, (event, session: number): BookFormat => {
+  validateIPCSender(event.senderFrame);
+  return getBookFormat(session);
+});
+
+ipcMain.handle(
+  Background.SEARCH_BOOK_MOVES,
+  async (event, session: number, sfen: string): Promise<string> => {
+    validateIPCSender(event.senderFrame);
+    return JSON.stringify(await searchBookMoves(session, sfen));
+  },
+);
+
+ipcMain.handle(
+  Background.UPDATE_BOOK_MOVE,
+  async (event, session: number, sfen: string, json: string) => {
+    validateIPCSender(event.senderFrame);
+    await updateBookMove(session, sfen, JSON.parse(json) as BookMove);
+  },
+);
+
+ipcMain.handle(
+  Background.REMOVE_BOOK_MOVE,
+  async (event, session: number, sfen: string, usi: string) => {
+    validateIPCSender(event.senderFrame);
+    await removeBookMove(session, sfen, usi);
+  },
+);
+
+ipcMain.handle(
+  Background.UPDATE_BOOK_MOVE_ORDER,
+  async (event, session: number, sfen: string, usi: string, order: number) => {
+    validateIPCSender(event.senderFrame);
+    await updateBookMoveOrder(session, sfen, usi, order);
+  },
+);
+
+ipcMain.handle(Background.LOAD_BOOK_IMPORT_SETTINGS, async (event): Promise<string> => {
+  validateIPCSender(event.senderFrame);
+  getAppLogger().debug("load book import settings");
+  return JSON.stringify(await loadBookImportSettings());
+});
+
+ipcMain.handle(Background.SAVE_BOOK_IMPORT_SETTINGS, async (event, json: string): Promise<void> => {
+  validateIPCSender(event.senderFrame);
+  getAppLogger().debug("save book import settings");
+  await saveBookImportSettings(JSON.parse(json));
+});
+
+ipcMain.handle(
+  Background.IMPORT_BOOK_MOVES,
+  async (event, session: number, json: string): Promise<string> => {
+    validateIPCSender(event.senderFrame);
+    return JSON.stringify(await importBookMoves(session, JSON.parse(json), sendProgress));
+  },
+);
 
 ipcMain.handle(Background.LOAD_LAYOUT_PROFILE_LIST, async (event): Promise<[string, string]> => {
   validateIPCSender(event.senderFrame);
@@ -497,15 +725,35 @@ ipcMain.handle(Background.LOAD_LAYOUT_PROFILE_LIST, async (event): Promise<[stri
   return [layoutURI, json];
 });
 
+const layoutProfileLazySaver = new Lazy();
+
 ipcMain.on(Background.UPDATE_LAYOUT_PROFILE_LIST, (event, uri: string, json: string) => {
   validateIPCSender(event.senderFrame);
   getAppLogger().debug("update layout: %s", uri);
   layoutURI = uri;
-  mainWindow.webContents.send(Renderer.UPDATE_LAYOUT_PROFILE_LIST, uri, json);
-  saveLayoutProfileList(JSON.parse(json)).catch((e) => {
-    sendError(new Error(`failed to save layout config: ${e}`));
-  });
+  const layoutList = JSON.parse(json) as LayoutProfileList;
+  const layout = layoutList.profiles.find((p) => p.uri === uri) || null;
+  mainWindow.webContents.send(Renderer.UPDATE_LAYOUT_PROFILE, layout && JSON.stringify(layout));
+  layoutProfileLazySaver.after(() => {
+    saveLayoutProfileList(JSON.parse(json)).catch((e) => {
+      sendError(new Error(`failed to save layout config: ${e}`));
+    });
+  }, 500);
 });
+
+ipcMain.handle(
+  Background.CREATE_DESKTOP_SHORTCUT_FOR_LAYOUT_PROFILE,
+  async (event, uri: string, name: string) => {
+    validateIPCSender(event.senderFrame);
+    const fileName = escapeFileName(`ShogiHome ${name}`);
+    getAppLogger().debug(
+      "create desktop shortcut for layout profile: uri=[%s] file=[%s]",
+      uri,
+      fileName,
+    );
+    await createDesktopShortcut(fileName, ["--layout-profile", uri]);
+  },
+);
 
 ipcMain.handle(Background.LOAD_USI_ENGINES, async (event): Promise<string> => {
   validateIPCSender(event.senderFrame);
@@ -550,24 +798,38 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(Background.GET_USI_ENGINE_METADATA, async (event, path: string): Promise<string> => {
+  validateIPCSender(event.senderFrame);
+  return JSON.stringify(await loadUSIEngineMeta(path));
+});
+
 ipcMain.handle(
-  Background.SEND_USI_SET_OPTION,
+  Background.SEND_USI_OPTION_BUTTON_SIGNAL,
   async (event, path: string, name: string, timeoutSeconds: number) => {
     validateIPCSender(event.senderFrame);
-    await usiSendSetOptionCommand(path, name, timeoutSeconds);
+    await usiSendOptionButtonSignal(path, name, timeoutSeconds);
   },
 );
 
-ipcMain.handle(Background.LAUNCH_USI, async (event, json: string, timeoutSeconds: number) => {
+ipcMain.handle(Background.LAUNCH_USI, async (event, json: string, json2: string) => {
   validateIPCSender(event.senderFrame);
   const engine = JSON.parse(json) as USIEngine;
-  return await usiSetupPlayer(engine, timeoutSeconds);
+  const options = JSON.parse(json2) as USIEngineLaunchOptions;
+  return await usiSetupPlayer(engine, options);
 });
 
 ipcMain.handle(Background.USI_READY, async (event, sessionID: number) => {
   validateIPCSender(event.senderFrame);
   return await usiReady(sessionID);
 });
+
+ipcMain.handle(
+  Background.USI_SET_OPTION,
+  (event, sessionID: number, name: string, value: string) => {
+    validateIPCSender(event.senderFrame);
+    usiSetOption(sessionID, name, value);
+  },
+);
 
 ipcMain.handle(
   Background.USI_GO,
@@ -595,10 +857,13 @@ ipcMain.handle(Background.USI_GO_INFINITE, (event, sessionID: number, usi: strin
   usiGoInfinite(sessionID, usi);
 });
 
-ipcMain.handle(Background.USI_GO_MATE, (event, sessionID: number, usi: string) => {
-  validateIPCSender(event.senderFrame);
-  usiGoMate(sessionID, usi);
-});
+ipcMain.handle(
+  Background.USI_GO_MATE,
+  (event, sessionID: number, usi: string, maxSeconds?: number) => {
+    validateIPCSender(event.senderFrame);
+    usiGoMate(sessionID, usi, maxSeconds);
+  },
+);
 
 ipcMain.handle(Background.USI_STOP, (event, sessionID: number) => {
   validateIPCSender(event.senderFrame);
@@ -618,7 +883,9 @@ ipcMain.handle(Background.USI_QUIT, (event, sessionID: number) => {
 ipcMain.handle(Background.CSA_LOGIN, (event, json: string): number => {
   validateIPCSender(event.senderFrame);
   const settings: CSAServerSettings = JSON.parse(json);
-  return csaLogin(settings);
+  const sessionID = csaLogin(settings);
+  preventAppSuspension(getPowerSaveBlockKeyForCSA(sessionID));
+  return sessionID;
 });
 
 ipcMain.handle(Background.CSA_LOGOUT, (event, sessionID: number): void => {
@@ -654,9 +921,10 @@ ipcMain.handle(Background.CSA_STOP, (event, sessionID: number): void => {
   csaStop(sessionID);
 });
 
-ipcMain.handle(Background.COLLECT_SESSION_STATES, (event): string => {
+ipcMain.handle(Background.COLLECT_SESSION_STATES, async (event): Promise<string> => {
   validateIPCSender(event.senderFrame);
   const sessionStates: SessionStates = {
+    os: collectOSState(),
     usiSessions: collectUSISessionStates(),
     csaSessions: collectCSASessionStates(),
   };
@@ -738,6 +1006,11 @@ ipcMain.on(
   },
 );
 
+ipcMain.handle(Background.GET_MACHINE_SPEC, async (event) => {
+  validateIPCSender(event.senderFrame);
+  return JSON.stringify(await getMachineSpec());
+});
+
 ipcMain.on(
   Background.OPEN_PROMPT,
   (event, target: PromptTarget, sessionID: number, name: string) => {
@@ -765,7 +1038,7 @@ ipcMain.on(Background.SEND_TEST_NOTIFICATION, (event) => {
 
 ipcMain.on(Background.OPEN_LOG_FILE, (event, logType: LogType) => {
   validateIPCSender(event.senderFrame);
-  openLogFile(logType);
+  openPath(getLogFilePath(logType));
 });
 
 ipcMain.on(Background.LOG, (event, level: LogLevel, message: string) => {
@@ -793,11 +1066,25 @@ ipcMain.on(Background.ON_CLOSABLE, (event) => {
 });
 
 export function onClose(): void {
-  mainWindow.webContents.send(Renderer.CLOSE);
+  const confirmations = [];
+  if (isBookUnsaved(defaultBookSession)) {
+    confirmations.push(t.anyBookMovesAreUnsavedDoYouReallyWantToDiscardThemAndCloseTheApp);
+  }
+  mainWindow.webContents.send(Renderer.CLOSE, confirmations);
 }
 
 export function sendError(e: Error): void {
-  mainWindow.webContents.send(Renderer.SEND_ERROR, e);
+  if (e instanceof AggregateError) {
+    for (const error of e.errors) {
+      sendError(error);
+    }
+    return;
+  }
+  mainWindow.webContents.send(Renderer.SEND_ERROR, e.message || e.name);
+}
+
+export function sendMessage(message: Message): void {
+  mainWindow.webContents.send(Renderer.SEND_MESSAGE, JSON.stringify(message));
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -805,7 +1092,6 @@ export function onMenuEvent(event: MenuEvent, ...args: any[]): void {
   mainWindow.webContents.send(Renderer.MENU_EVENT, event, ...args);
 }
 
-// FIXME: do not export
 export function updateAppSettings(settings: AppSettingsUpdate): void {
   mainWindow.webContents.send(Renderer.UPDATE_APP_SETTINGS, JSON.stringify(settings));
 }
@@ -814,6 +1100,10 @@ export function openRecord(path: string): void {
   if (isSupportedRecordFilePath(path)) {
     mainWindow.webContents.send(Renderer.OPEN_RECORD, path);
   }
+}
+
+export function sendProgress(progress: number): void {
+  mainWindow.webContents.send(Renderer.PROGRESS, progress);
 }
 
 setUSIHandlers({
@@ -835,8 +1125,15 @@ setUSIHandlers({
   onUSIInfo(sessionID: number, usi: string, info: USIInfoCommand): void {
     mainWindow.webContents.send(Renderer.USI_INFO, sessionID, usi, JSON.stringify(info));
   },
-  onUSIPonderInfo(sessionID: number, usi: string, info: USIInfoCommand): void {
-    mainWindow.webContents.send(Renderer.USI_PONDER_INFO, sessionID, usi, JSON.stringify(info));
+  onEngineProcessStats(
+    _: number,
+    usi: string,
+    stats: USIEngineStatsEntry,
+    launchTimeMs: number,
+  ): void {
+    updateUSIEngineStats(usi, stats, new Date(launchTimeMs)).catch((e) => {
+      sendError(new Error(`Failed to update USI engine stats: ${e}`));
+    });
   },
   sendPromptCommand: sendPromptCommand.bind(this, PromptTarget.USI),
 });
@@ -859,7 +1156,29 @@ setHandlers({
   },
   onCSAClose(sessionID: number): void {
     mainWindow.webContents.send(Renderer.CSA_CLOSE, sessionID);
+    allowAppSuspension(getPowerSaveBlockKeyForCSA(sessionID));
   },
   sendPromptCommand: sendPromptCommand.bind(this, PromptTarget.CSA),
   sendError: sendError,
 });
+
+function getPowerSaveBlockKeyForCSA(sessionID: number): string {
+  return `csa:${sessionID}`;
+}
+
+const powerSaveBlockMap = new Map<string, number>();
+
+function preventAppSuspension(key: string) {
+  const id = powerSaveBlocker.start("prevent-app-suspension");
+  powerSaveBlockMap.set(key, id);
+  getAppLogger().info("prevent app suspension: blocker=%d", id);
+}
+
+function allowAppSuspension(key: string) {
+  const id = powerSaveBlockMap.get(key);
+  if (id !== undefined) {
+    powerSaveBlocker.stop(id);
+    powerSaveBlockMap.delete(key);
+    getAppLogger().info("allow app suspension: blocker=%d", id);
+  }
+}

@@ -1,6 +1,6 @@
-import { MateSearchSettings } from "@/common/settings/mate";
-import { USIPlayer } from "@/renderer/players/usi";
-import { useAppSettings } from "./settings";
+import { MateSearchSettings } from "@/common/settings/mate.js";
+import { USIPlayer } from "@/renderer/players/usi.js";
+import { useAppSettings } from "./settings.js";
 import { ImmutableRecord, Move } from "tsshogi";
 
 type CheckmateCallback = (moves: Move[]) => void;
@@ -60,11 +60,12 @@ export class MateSearchManager {
     }
     // エンジンを起動する。
     const appSettings = useAppSettings();
-    this.engine = new USIPlayer(settings.usi, appSettings.engineTimeoutSeconds);
+    this.engine = new USIPlayer(settings.usi, { timeoutSeconds: appSettings.engineTimeoutSeconds });
+    const maxSeconds = settings.enableMaxSeconds ? settings.maxSeconds : undefined;
     try {
       await this.engine.launch();
       await this.engine.readyNewGame();
-      await this.engine.startMateSearch(record.position, record.usi, {
+      await this.engine.startMateSearch(record.position, record.usi, maxSeconds, {
         onCheckmate: (moves) => {
           this.close();
           this.onCheckmate(moves);

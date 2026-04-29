@@ -5,7 +5,7 @@
         v-for="monitor in monitors"
         :key="monitor.sessionID"
         :history-mode="historyMode"
-        :info="monitor"
+        :monitor="monitor"
         :height="elementHeight"
         :show-header="showHeader"
         :show-time-column="showTimeColumn"
@@ -14,7 +14,7 @@
         :show-nodes-column="showNodesColumn"
         :show-score-column="showScoreColumn"
         :show-play-button="showPlayButton"
-        :can-be-paused="store.isResearchEngineSessionID(monitor.sessionID)"
+        :show-suggestions-count="showSuggestionsCount"
       />
     </div>
   </div>
@@ -42,6 +42,7 @@ const props = defineProps({
   showNodesColumn: { type: Boolean, default: true },
   showScoreColumn: { type: Boolean, default: true },
   showPlayButton: { type: Boolean, default: true },
+  showSuggestionsCount: { type: Boolean, default: true },
 });
 
 const store = useStore();

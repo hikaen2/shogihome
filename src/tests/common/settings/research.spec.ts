@@ -2,8 +2,8 @@ import {
   ResearchSettings,
   normalizeResearchSettings,
   validateResearchSettings,
-} from "@/common/settings/research";
-import * as uri from "@/common/uri";
+} from "@/common/settings/research.js";
+import * as uri from "@/common/uri.js";
 
 describe("settings/research", () => {
   it("normalize", () => {
@@ -23,6 +23,8 @@ describe("settings/research", () => {
       secondaries: [],
       enableMaxSeconds: false,
       maxSeconds: 10,
+      overrideMultiPV: false,
+      multiPV: 1,
     };
     const result = normalizeResearchSettings(settings);
     expect(result).toStrictEqual(settings);
@@ -45,6 +47,8 @@ describe("settings/research", () => {
       secondaries: [],
       enableMaxSeconds: false,
       maxSeconds: 10,
+      overrideMultiPV: false,
+      multiPV: 1,
     };
     expect(validateResearchSettings(settings)).toBeUndefined();
   });
@@ -54,6 +58,8 @@ describe("settings/research", () => {
       secondaries: [],
       enableMaxSeconds: false,
       maxSeconds: 10,
+      overrideMultiPV: false,
+      multiPV: 1,
     };
     expect(validateResearchSettings(settings)).toBeInstanceOf(Error);
   });
@@ -75,6 +81,8 @@ describe("settings/research", () => {
       secondaries: [{}],
       enableMaxSeconds: false,
       maxSeconds: 10,
+      overrideMultiPV: false,
+      multiPV: 1,
     };
     expect(validateResearchSettings(settings)).toBeInstanceOf(Error);
   });

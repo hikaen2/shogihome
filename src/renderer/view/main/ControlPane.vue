@@ -2,7 +2,7 @@
   <div>
     <div ref="root" class="full column" :class="{ compact }">
       <div
-        v-show="group === ControlGroup.Group1 || group === ControlGroup.All"
+        v-if="group === ControlGroup.Group1 || group === ControlGroup.All"
         class="full column control-box"
       >
         <!-- 検討 -->
@@ -10,7 +10,7 @@
           v-show="store.researchState !== ResearchState.RUNNING"
           class="control-item"
           data-hotkey="Mod+r"
-          @click="onResearch"
+          @click="onToggleResearch"
         >
           <Icon :icon="IconType.RESEARCH" />
           <span :class="{ tooltip: compact }">{{ t.research }}</span>
@@ -19,8 +19,7 @@
         <button
           v-show="store.researchState === ResearchState.RUNNING"
           class="control-item close"
-          data-hotkey="Escape"
-          @click="onEndResearch"
+          @click="onToggleResearch"
         >
           <Icon :icon="IconType.END" />
           <span :class="{ tooltip: compact }">{{ t.endResearch }}</span>
@@ -34,7 +33,6 @@
         <button
           v-show="store.appState === AppState.GAME || store.appState === AppState.CSA_GAME"
           class="control-item close"
-          data-hotkey="Escape"
           @click="onStop"
         >
           <Icon :icon="IconType.STOP" />
@@ -98,7 +96,6 @@
         <button
           v-show="store.appState === AppState.ANALYSIS"
           class="control-item close"
-          data-hotkey="Escape"
           @click="onEndAnalysis"
         >
           <Icon :icon="IconType.STOP" />
@@ -118,7 +115,6 @@
         <button
           v-show="store.appState === AppState.MATE_SEARCH"
           class="control-item close"
-          data-hotkey="Escape"
           @click="onStopMateSearch"
         >
           <Icon :icon="IconType.END" />
@@ -137,7 +133,6 @@
         <button
           v-show="store.appState === AppState.POSITION_EDITING"
           class="control-item close"
-          data-hotkey="Escape"
           @click="onEndEditPosition"
         >
           <Icon :icon="IconType.CHECK" />
@@ -172,7 +167,7 @@
         </button>
       </div>
 <!--      <div-->
-<!--        v-show="group === ControlGroup.Group2 || group === ControlGroup.All"-->
+<!--        v-if="group === ControlGroup.Group2 || group === ControlGroup.All"-->
 <!--        class="full column control-box"-->
 <!--      >-->
 <!--        &lt;!&ndash; 指し手削除 &ndash;&gt;-->
@@ -310,12 +305,12 @@ const onJishogiPoints = () => {
   store.showJishogiPoints();
 };
 
-const onResearch = () => {
-  store.showResearchDialog();
-};
-
-const onEndResearch = () => {
-  store.stopResearch();
+const onToggleResearch = () => {
+  if (store.researchState === ResearchState.RUNNING) {
+    store.stopResearch();
+  } else {
+    store.showResearchDialog();
+  }
 };
 
 const onAnalysis = () => {
@@ -377,6 +372,9 @@ const onRemoveCurrentMove = () => {
 
 <style scoped>
 .control-item {
+  display: flex;
+  align-items: center;
+  position: relative;
   width: 100%;
   height: 20%;
   font-size: 80%;
@@ -388,13 +386,25 @@ const onRemoveCurrentMove = () => {
   padding: 0 5% 0 5%;
 }
 .compact .control-item {
+  justify-content: center;
   text-align: center;
+  overflow: visible;
 }
 .control-item .icon {
   height: 68%;
+  width: auto;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 auto;
+  object-fit: contain;
 }
 .compact .control-item .icon {
   height: 48%;
+}
+.control-item span {
+  line-height: 1;
+}
+.control-item .icon + span {
+  margin-left: 5px;
 }
 .tooltip {
   display: none;
@@ -406,7 +416,14 @@ const onRemoveCurrentMove = () => {
   padding: 5px;
   z-index: 100;
 }
-*:hover > .tooltip {
+.compact .control-item .tooltip {
+  margin-left: 0;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+.control-item:hover > .tooltip {
   display: block;
 }
 </style>

@@ -1,4 +1,4 @@
-import * as uri from "@/common/uri";
+import * as uri from "@/common/uri.js";
 import {
   appendCSAGameSettingsHistory,
   CSAGameSettings,
@@ -9,16 +9,36 @@ import {
   importCSAGameSettingsForCLI,
   normalizeSecureCSAGameSettingsHistory,
   validateCSAGameSettings,
-} from "@/common/settings/csa";
-import { defaultAppSettings } from "@/common/settings/app";
+  defaultCSAGameSettingsHistory,
+} from "@/common/settings/csa.js";
+import { defaultAppSettings } from "@/common/settings/app.js";
 import {
   csaGameSettings,
   csaGameSettingsForCLI,
   emptyCSAGameSettingsHistory,
   playerURI,
-} from "@/tests/mock/csa";
+} from "@/tests/mock/csa.js";
+import { SearchCommentFormat } from "@/common/settings/comment.js";
 
 describe("settings/csa", () => {
+  it("defaultCSAGameSettingsHistory/withAutoSaveDirectory", () => {
+    const result = defaultCSAGameSettingsHistory({ autoSaveDirectory: "/path/to/autosave" });
+    expect(result.enableAutoSave).toBe(true);
+    expect(result.autoSaveDirectory).toBe("/path/to/autosave");
+  });
+
+  it("defaultCSAGameSettingsHistory/withoutAutoSaveDirectory", () => {
+    const result = defaultCSAGameSettingsHistory();
+    expect(result.enableAutoSave).toBe(false);
+    expect(result.autoSaveDirectory).toBe("");
+  });
+
+  it("defaultCSAGameSettingsHistory/withEmptyAutoSaveDirectory", () => {
+    const result = defaultCSAGameSettingsHistory({ autoSaveDirectory: "" });
+    expect(result.enableAutoSave).toBe(false);
+    expect(result.autoSaveDirectory).toBe("");
+  });
+
   it("validate/noError", () => {
     const result = validateCSAGameSettings({
       player: {
@@ -36,9 +56,11 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
+      searchCommentFormat: SearchCommentFormat.SHOGIHOME,
     });
     expect(result).toBeUndefined();
   });
@@ -60,9 +82,11 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
+      searchCommentFormat: SearchCommentFormat.SHOGIHOME,
     });
     expect(result).toBeInstanceOf(Error);
   });
@@ -84,9 +108,11 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
+      searchCommentFormat: SearchCommentFormat.SHOGIHOME,
     });
     expect(result).toBeInstanceOf(Error);
   });
@@ -108,9 +134,11 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
+      searchCommentFormat: SearchCommentFormat.SHOGIHOME,
     });
     expect(result).toBeInstanceOf(Error);
   });
@@ -132,9 +160,11 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
+      searchCommentFormat: SearchCommentFormat.SHOGIHOME,
     });
     expect(result).toBeInstanceOf(Error);
   });
@@ -156,9 +186,11 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
+      searchCommentFormat: SearchCommentFormat.SHOGIHOME,
     });
     expect(result).toBeInstanceOf(Error);
   });
@@ -181,6 +213,7 @@ describe("settings/csa", () => {
       autoFlip: false,
       enableComment: false,
       enableAutoSave: false,
+      autoSaveDirectory: "",
       repeat: 3,
       autoRelogin: false,
       restartPlayerEveryGame: false,
@@ -203,9 +236,11 @@ describe("settings/csa", () => {
         autoFlip: true,
         enableComment: true,
         enableAutoSave: true,
+        autoSaveDirectory: "",
         repeat: 1,
         autoRelogin: true,
         restartPlayerEveryGame: false,
+        searchCommentFormat: SearchCommentFormat.SHOGIHOME,
       };
     };
     let history = emptyCSAGameSettingsHistory;
@@ -268,6 +303,7 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
@@ -356,6 +392,7 @@ describe("settings/csa", () => {
       autoFlip: true,
       enableComment: true,
       enableAutoSave: true,
+      autoSaveDirectory: "",
       repeat: 1,
       autoRelogin: true,
       restartPlayerEveryGame: false,
@@ -441,7 +478,9 @@ describe("settings/csa", () => {
   });
 
   it("import-cli-settings", () => {
-    const result = importCSAGameSettingsForCLI(csaGameSettingsForCLI, playerURI);
+    const result = importCSAGameSettingsForCLI(csaGameSettingsForCLI, {
+      playerURI,
+    });
     const expected = JSON.parse(JSON.stringify(csaGameSettings)) as CSAGameSettings;
     // CLI 用設定から逆変換するときに入らない情報を除去してから比較する。
     expected.player.usi!.author = "";

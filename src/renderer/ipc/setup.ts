@@ -1,21 +1,20 @@
 import { watch } from "vue";
 import { SpecialMoveType } from "tsshogi";
-import { useStore } from "@/renderer/store";
-import { useStore as usePromptStore } from "@/renderer/prompt/store";
+import { useStore } from "@/renderer/store/index.js";
+import { useStore as usePromptStore } from "@/renderer/prompt/store.js";
 import {
   onUSIBestMove,
   onUSICheckmate,
   onUSICheckmateNotImplemented,
   onUSICheckmateTimeout,
   onUSIInfo,
-  onUSIPonderInfo,
   onUSINoMate,
-} from "@/renderer/players/usi";
-import { humanPlayer } from "@/renderer/players/human";
-import { bridge } from "@/renderer/ipc/api";
-import { MenuEvent } from "@/common/control/menu";
-import { USIInfoCommand } from "@/common/game/usi";
-import { AppState, ResearchState } from "@/common/control/state";
+} from "@/renderer/players/usi.js";
+import { humanPlayer } from "@/renderer/players/human.js";
+import { bridge } from "@/renderer/ipc/api.js";
+import { MenuEvent } from "@/common/control/menu.js";
+import { USIInfoCommand } from "@/common/game/usi.js";
+import { AppState, ResearchState } from "@/common/control/state.js";
 import {
   onCSAClose,
   onCSAGameResult,
@@ -23,13 +22,15 @@ import {
   onCSAMove,
   onCSAReject,
   onCSAStart,
-} from "@/renderer/store/csa";
-import { useAppSettings } from "@/renderer/store/settings";
-import { t } from "@/common/i18n";
-import { LogLevel } from "@/common/log";
-import { useErrorStore } from "@/renderer/store/error";
-import { useBusyState } from "@/renderer/store/busy";
-import { useConfirmationStore } from "@/renderer/store/confirm";
+} from "@/renderer/game/csa.js";
+import { useAppSettings } from "@/renderer/store/settings.js";
+import { t } from "@/common/i18n/index.js";
+import { LogLevel } from "@/common/log.js";
+import { useErrorStore } from "@/renderer/store/error.js";
+import { useBusyState } from "@/renderer/store/busy.js";
+import { useConfirmationStore } from "@/renderer/store/confirm.js";
+import { useMessageStore } from "@/renderer/store/message.js";
+import { useBookStore } from "@/renderer/store/book.js";
 
 export function setup(): void {
   const store = useStore();
@@ -43,18 +44,33 @@ export function setup(): void {
       bridge.updateAppState(appState as AppState, researchState as ResearchState, busy as boolean),
   );
   bridge.updateAppState(store.appState, store.researchState, busyState.isBusy);
-  bridge.onClose(() => {
-    store
-      .onMainWindowClose()
-      .catch((e) => {
-        bridge.log(LogLevel.ERROR, e.message);
-      })
-      .finally(() => {
-        bridge.onClosable();
-      });
+  bridge.onClose(async (confirmations: string[]) => {
+    try {
+      for (const message of confirmations) {
+        await new Promise<void>((resolve, reject) => {
+          useConfirmationStore().show({
+            message,
+            onOk: resolve,
+            onCancel: reject,
+          });
+        });
+      }
+    } catch {
+      return;
+    }
+    try {
+      await store.onMainWindowClose();
+    } catch (e) {
+      bridge.log(LogLevel.ERROR, `${e}`);
+    } finally {
+      bridge.onClosable();
+    }
   });
-  bridge.onSendError((e: Error) => {
+  bridge.onSendError((e: string) => {
     useErrorStore().add(e);
+  });
+  bridge.onSendMessage((json: string) => {
+    useMessageStore().enqueue(JSON.parse(json));
   });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   bridge.onMenuEvent((event: MenuEvent, ...args: any[]) => {
@@ -64,6 +80,9 @@ export function setup(): void {
     switch (event) {
       case MenuEvent.NEW_RECORD:
         store.resetRecord();
+        break;
+      case MenuEvent.NEW_RECORD_HIRATE_SETUP:
+        store.resetRecord("hirateSetup");
         break;
       case MenuEvent.OPEN_RECORD:
         store.openRecord();
@@ -99,10 +118,10 @@ export function setup(): void {
         store.copyRecordCSA();
         break;
       case MenuEvent.COPY_RECORD_USI_BEFORE:
-        store.copyRecordUSIBefore();
+        store.copyRecordUSI("before");
         break;
       case MenuEvent.COPY_RECORD_USI_ALL:
-        store.copyRecordUSIAll();
+        store.copyRecordUSI("all");
         break;
       case MenuEvent.COPY_RECORD_JKF:
         store.copyRecordJKF();
@@ -110,11 +129,41 @@ export function setup(): void {
       case MenuEvent.COPY_RECORD_USEN:
         store.copyRecordUSEN();
         break;
+      case MenuEvent.COPY_RECORD_FROM_CURRENT_POSITION:
+        store.copyRecordKIF({ fromCurrentPosition: true });
+        break;
+      case MenuEvent.COPY_RECORD_KI2_FROM_CURRENT_POSITION:
+        store.copyRecordKI2({ fromCurrentPosition: true });
+        break;
+      case MenuEvent.COPY_RECORD_CSA_FROM_CURRENT_POSITION:
+        store.copyRecordCSA({ fromCurrentPosition: true });
+        break;
+      case MenuEvent.COPY_RECORD_USI_FROM_CURRENT_POSITION:
+        store.copyRecordUSI("after");
+        break;
+      case MenuEvent.COPY_RECORD_JKF_FROM_CURRENT_POSITION:
+        store.copyRecordJKF({ fromCurrentPosition: true });
+        break;
+      case MenuEvent.COPY_RECORD_USEN_FROM_CURRENT_POSITION:
+        store.copyRecordUSEN({ fromCurrentPosition: true });
+        break;
       case MenuEvent.COPY_BOARD_SFEN:
         store.copyBoardSFEN();
         break;
+      case MenuEvent.COPY_BOARD_BOD:
+        store.copyBoardBOD();
+        break;
       case MenuEvent.PASTE_RECORD:
         store.showPasteDialog();
+        break;
+      case MenuEvent.PASTE_RECORD_MERGE_INTO_ROOT_POSITION:
+        store.showPasteDialog("mergeIntoRoot");
+        break;
+      case MenuEvent.PASTE_RECORD_MERGE_INTO_CURRENT_POSITION:
+        store.showPasteDialog("mergeIntoCurrent");
+        break;
+      case MenuEvent.SEARCH_DUPLICATE_POSITIONS:
+        store.showSearchDuplicatePositionsDialog();
         break;
       case MenuEvent.INSERT_INTERRUPT:
         store.insertSpecialMove(SpecialMoveType.INTERRUPT);
@@ -170,6 +219,9 @@ export function setup(): void {
       case MenuEvent.INIT_POSITION:
         store.initializePositionBySFEN(args[0]);
         break;
+      case MenuEvent.CHANGE_PIECE_SET:
+        store.showPieceSetChangeDialog();
+        break;
       case MenuEvent.START_MATE_SEARCH:
         store.showMateSearchDialog();
         break;
@@ -213,11 +265,15 @@ export function setup(): void {
       case MenuEvent.CALCULATE_POINTS:
         store.showJishogiPoints();
         break;
-      case MenuEvent.START_RESEARCH:
-        store.showResearchDialog();
+      case MenuEvent.DISPLAY_GAME_RESULTS:
+        store.showGameResults();
         break;
-      case MenuEvent.STOP_RESEARCH:
-        store.stopResearch();
+      case MenuEvent.TOGGLE_RESEARCH:
+        if (store.researchState === ResearchState.RUNNING) {
+          store.stopResearch();
+        } else {
+          store.showResearchDialog();
+        }
         break;
       case MenuEvent.START_ANALYSIS:
         store.showAnalysisDialog();
@@ -239,6 +295,30 @@ export function setup(): void {
         break;
       case MenuEvent.CONNECT_TO_CSA_SERVER:
         store.showConnectToCSAServerDialog();
+        break;
+      case MenuEvent.ELAPSED_TIME_CHART:
+        store.showElapsedTimeChartDialog();
+        break;
+      case MenuEvent.RESET_BOOK:
+        store.showResetBookDialog();
+        break;
+      case MenuEvent.OPEN_BOOK_FILE:
+        useBookStore().openBookFile();
+        break;
+      case MenuEvent.SAVE_BOOK_FILE:
+        useBookStore().saveBookFile();
+        break;
+      case MenuEvent.ADD_BOOK_MOVES:
+        store.showAddBookMovesDialog();
+        break;
+      case MenuEvent.EXPORT_BOOK_AS_YANE2016:
+        useBookStore().exportBookFile("yane2016");
+        break;
+      case MenuEvent.EXPORT_BOOK_AS_APERY:
+        useBookStore().exportBookFile("apery");
+        break;
+      case MenuEvent.EXPORT_BOOK_AS_SBK:
+        useBookStore().exportBookFile("sbk");
         break;
     }
   });
@@ -268,10 +348,6 @@ export function setup(): void {
     const info = JSON.parse(json) as USIInfoCommand;
     onUSIInfo(sessionID, usi, info);
   });
-  bridge.onUSIPonderInfo((sessionID: number, usi: string, json: string) => {
-    const info = JSON.parse(json) as USIInfoCommand;
-    onUSIPonderInfo(sessionID, usi, info);
-  });
 
   // CSA
   bridge.onCSAGameSummary((sessionID: number, gameSummary: string): void => {
@@ -288,8 +364,13 @@ export function setup(): void {
   bridge.onCSAClose(onCSAClose);
 
   // Layout
-  bridge.onUpdateLayoutProfileList((uri, json) => {
-    store.updateLayoutProfileList(uri, JSON.parse(json));
+  bridge.onUpdateLayoutProfile((json) => {
+    store.updateLayoutProfile(json && JSON.parse(json));
+  });
+
+  // MISC
+  bridge.onProgress((progress: number) => {
+    busyState.updateProgress(progress);
   });
 }
 

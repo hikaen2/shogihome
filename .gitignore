@@ -1,6 +1,7 @@
 .DS_Store
 node_modules
 /dist
+/dev-dist
 /dist_electron
 /coverage
 /records
@@ -23,3 +24,5 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+settings.local.json

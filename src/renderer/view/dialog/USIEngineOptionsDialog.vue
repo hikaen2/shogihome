@@ -1,224 +1,335 @@
 <template>
-  <div>
-    <dialog ref="dialog">
-      <div class="title">{{ t.manageEngines }}</div>
-      <div class="form-group">
-        <div class="option-filter">
-          <input
-            ref="filter"
-            class="filter"
-            :placeholder="t.filterByOptionName"
-            @input="updateFilter"
-          />
+  <DialogFrame @cancel="cancel">
+    <div class="title">{{ t.manageEngines }}</div>
+    <div class="form-group">
+      <div class="option-filter row">
+        <ToggleButton v-model:value="detailed" :label="t.detailSettings" />
+        <input
+          v-show="detailed"
+          v-model.trim="filter"
+          class="filter"
+          :placeholder="t.filterByOptionName"
+        />
+      </div>
+      <div class="column option-list">
+        <!-- 名前 -->
+        <div v-show="detailed" class="row option">
+          <div class="option-name">{{ t.engineName }}</div>
+          <div class="option-unchangeable">{{ engine.defaultName }}</div>
         </div>
-        <div class="column option-list">
-          <!-- 名前 -->
-          <div class="row option">
-            <div class="option-name">{{ t.engineName }}</div>
-            <div class="option-unchangeable">{{ engine.defaultName }}</div>
+        <!-- 作者 -->
+        <div v-show="detailed && !filterWords.length" class="row option">
+          <div class="option-name">{{ t.author }}</div>
+          <div class="option-unchangeable">{{ engine.author }}</div>
+        </div>
+        <!-- 場所 -->
+        <div v-show="detailed && !filterWords.length" class="row option">
+          <div class="option-name">{{ t.enginePath }}</div>
+          <div class="option-unchangeable">
+            <div>{{ engine.path }}</div>
+            <button class="thin" @click="replaceEnginePath">
+              {{ t.replaceEnginePath }}
+            </button>
+            <button class="thin" @click="openEngineDir">
+              {{ t.openDirectory }}
+            </button>
           </div>
-          <!-- 作者 -->
-          <div v-show="!filterWords.length" class="row option">
-            <div class="option-name">{{ t.author }}</div>
-            <div class="option-unchangeable">{{ engine.author }}</div>
+        </div>
+        <!-- 表示名 -->
+        <div v-show="!detailed || !filterWords.length" class="row option">
+          <div class="option-name">{{ t.displayName }}</div>
+          <div class="option-value">
+            <input v-model="engine.name" class="option-value-text" type="text" />
           </div>
-          <!-- 場所 -->
-          <div v-show="!filterWords.length" class="row option">
-            <div class="option-name">{{ t.enginePath }}</div>
-            <div class="option-unchangeable">
-              <div>{{ engine.path }}</div>
-              <button class="thin" @click="openEngineDir">
-                {{ t.openDirectory }}
+        </div>
+        <!-- オプション -->
+        <div
+          v-for="(option, index) in options"
+          v-show="optionVisibility[index]"
+          :key="option.name"
+          class="row option"
+        >
+          <div class="option-name">
+            <!-- オプション名 -->
+            {{ option.displayName || option.name }}
+            <span v-if="option.displayName" class="option-name-original">
+              {{ option.name }}
+            </span>
+          </div>
+          <div class="option-value">
+            <span class="option-value-control">
+              <!-- 数値 (spin) -->
+              <input
+                v-if="option.type === 'spin'"
+                v-model.number="option.currentValue"
+                class="option-value-number"
+                type="number"
+                :min="option.min"
+                :max="option.max"
+                step="1"
+                :name="option.name"
+              />
+              <!-- 文字列 (string) -->
+              <input
+                v-if="option.type === 'string'"
+                v-model="option.currentValue"
+                class="option-value-text"
+                type="text"
+                :name="option.name"
+              />
+              <!-- ファイル名 (filename) -->
+              <input
+                v-if="option.type === 'filename'"
+                v-model="option.currentValue"
+                class="option-value-filename"
+                type="text"
+                :name="option.name"
+              />
+              <button
+                v-if="option.type === 'filename'"
+                class="thin"
+                @click="
+                  selectFile((value) => {
+                    option.currentValue = value;
+                  })
+                "
+              >
+                {{ t.select }}
               </button>
-            </div>
-          </div>
-          <!-- 表示名 -->
-          <div v-show="!filterWords.length" class="row option">
-            <div class="option-name">{{ t.displayName }}</div>
-            <div class="option-value">
-              <input ref="engineNameInput" class="option-value-text" type="text" />
-            </div>
-          </div>
-          <!-- オプション -->
-          <div
-            v-for="option in options"
-            v-show="option.visible"
-            :key="option.name"
-            class="row option"
-          >
-            <div class="option-name">
-              <!-- オプション名 -->
-              {{ option.displayName || option.name }}
-              <span v-if="option.displayName" class="option-name-original">
-                {{ option.name }}
-              </span>
-            </div>
-            <div class="option-value">
-              <span class="option-value-control">
-                <!-- 数値 (spin) -->
-                <input
-                  v-if="option.type === 'spin'"
-                  :ref="
-                    (el) => {
-                      inputs[option.name] = el as HTMLInputElement;
-                    }
-                  "
-                  class="option-value-number"
-                  type="number"
-                  :min="option.min"
-                  :max="option.max"
-                  step="1"
-                  :name="option.name"
-                />
-                <!-- 文字列 (string) -->
-                <input
-                  v-if="option.type === 'string'"
-                  :ref="
-                    (el) => {
-                      inputs[option.name] = el as HTMLInputElement;
-                    }
-                  "
-                  class="option-value-text"
-                  type="text"
-                  :name="option.name"
-                />
-                <!-- ファイル名 (filename) -->
-                <input
-                  v-if="option.type === 'filename'"
-                  :ref="
-                    (el) => {
-                      inputs[option.name] = el as HTMLInputElement;
-                    }
-                  "
-                  class="option-value-filename"
-                  type="text"
-                  :name="option.name"
-                />
-                <button
-                  v-if="option.type === 'filename'"
-                  class="thin"
-                  @click="selectFile(option.name)"
-                >
-                  {{ t.select }}
-                </button>
-                <!-- ブール値 (check) -->
-                <HorizontalSelector
-                  v-if="option.type === 'check'"
-                  :ref="
-                    (el: unknown) => {
-                      selectors[option.name] = el as InstanceType<typeof HorizontalSelector>;
-                    }
-                  "
-                  value=""
-                  :items="
-                    option.default
-                      ? [
-                          { value: 'true', label: 'ON' },
-                          { value: 'false', label: 'OFF' },
-                        ]
-                      : [
-                          { value: '', label: t.defaultValue },
-                          { value: 'true', label: 'ON' },
-                          { value: 'false', label: 'OFF' },
-                        ]
-                  "
-                />
-                <!-- 選択 (combo) -->
-                <ComboBox
-                  v-if="option.type === 'combo'"
-                  :ref="
-                    (el: unknown) => {
-                      selectors[option.name] = el as InstanceType<typeof ComboBox>;
-                    }
-                  "
-                  :options="[
-                    { value: '', label: t.defaultValue },
-                    ...option.vars.map((v) => ({ value: v, label: v })),
-                  ]"
-                  :free-text-label="t.freeTextUnsafe"
-                />
-                <button
-                  v-if="option.type === 'button'"
-                  class="thin"
-                  @click="sendOption(option.name)"
-                >
-                  {{ t.invoke }}
-                </button>
-              </span>
-              <!-- デフォルト値 -->
-              <span
-                v-if="option.type !== 'button' && (option.default || option.default === 0)"
-                class="option-default-value"
+              <!-- ブール値 (check) -->
+              <HorizontalSelector
+                v-if="option.type === 'check'"
+                v-model:value="option.currentValue as string"
+                :items="
+                  option.default
+                    ? [
+                        { value: 'true', label: 'ON' },
+                        { value: 'false', label: 'OFF' },
+                      ]
+                    : [
+                        { value: '', label: t.defaultValue },
+                        { value: 'true', label: 'ON' },
+                        { value: 'false', label: 'OFF' },
+                      ]
+                "
+              />
+              <!-- 選択 (combo) -->
+              <ComboBox
+                v-if="option.type === 'combo'"
+                v-model="option.currentValue as string"
+                :options="[
+                  { value: '', label: t.defaultValue },
+                  ...option.vars.map((v) => ({ value: v, label: v })),
+                ]"
+              />
+              <button
+                v-if="option.type === 'button'"
+                class="thin"
+                @click="sendOptionButtonSignal(option.name)"
               >
-                {{ t.defaultValue }}:
-                {{
-                  option.type === "check"
-                    ? option.default === "true"
-                      ? "ON"
-                      : "OFF"
-                    : option.default
-                }}
-              </span>
-              <!-- 早期 ponder -->
+                {{ t.invoke }}
+              </button>
+            </span>
+            <!-- デフォルト値 -->
+            <span
+              v-if="option.type !== 'button' && (option.default || option.default === 0)"
+              class="option-default-value"
+              :class="{ highlight: option.currentValue !== option.default }"
+            >
+              {{ t.defaultValue }}:
+              {{
+                option.type === "check"
+                  ? option.default === "true"
+                    ? "ON"
+                    : "OFF"
+                  : option.default
+              }}
+            </span>
+            <!-- Threads / NumberOfThreads -->
+            <div
+              v-if="
+                (option.name === Threads || option.name === NumberOfThreads) &&
+                typeof option.currentValue === 'number' &&
+                machineSpec.cpuCores > 0 &&
+                !metadata.isShellScript
+              "
+            >
+              <PercentageBarChart
+                class="bar-chart"
+                :value="option.currentValue"
+                :max="machineSpec.cpuCores"
+                :unit="t.threads"
+              />
+              <div v-if="option.currentValue > machineSpec.cpuCores" class="form-group danger">
+                <div class="note">{{ t.cpuUsageExceedsNPercent(100) }}</div>
+              </div>
               <div
-                v-if="option.name === 'USI_Ponder' && option.type === 'check'"
-                class="additional"
+                v-else-if="
+                  option.currentValue >= 2 && option.currentValue > machineSpec.cpuCores * 0.5
+                "
+                class="form-group warning"
               >
-                <ToggleButton
-                  :label="t.earlyPonder"
-                  :value="enableEarlyPonder"
-                  @change="
-                    (value: boolean) => {
-                      enableEarlyPonder = value;
-                    }
-                  "
-                />
-                <div v-show="enableEarlyPonder" class="form-group warning">
-                  <div class="note">
-                    {{ t.earlyPonderFeatureSendsPonderhitCommandWithYaneuraOusNonStandardOptions }}
-                    {{ t.ifYourEngineNotSupportTheOptionsItMayCauseUnexpectedBehavior }}
-                  </div>
+                <div class="note">
+                  {{ t.cpuUsageExceedsNPercent(50) }}{{ t.recommendLowerSettingsForDailyUse }}
+                </div>
+              </div>
+              <div
+                v-if="machineSpec.cpuCores > 32 && option.currentValue > 32"
+                class="form-group warning"
+              >
+                <div class="note">{{ t.checkEngineCompatibilityForNumaEnvironments }}</div>
+              </div>
+            </div>
+            <!-- USI_Hash -->
+            <div
+              v-if="
+                option.name === USIHash &&
+                typeof option.currentValue === 'number' &&
+                machineSpec.memory > 0 &&
+                !metadata.isShellScript
+              "
+            >
+              <PercentageBarChart
+                class="bar-chart"
+                :value="option.currentValue"
+                :max="machineSpec.memory / 1024"
+                unit="MB"
+              />
+              <div
+                v-if="option.currentValue * 1024 > machineSpec.memory * 0.95"
+                class="form-group danger"
+              >
+                <div class="note">
+                  {{ t.memoryUsageExceedsNPercent(95) }}{{ t.aiPerformanceMayDegrade }}
+                </div>
+              </div>
+              <div
+                v-else-if="option.currentValue * 1024 > machineSpec.memory * 0.9"
+                class="form-group warning"
+              >
+                <div class="note">
+                  {{ t.memoryUsageExceedsNPercent(90) }}{{ t.yourPCMayBecomeSlow }}
+                </div>
+              </div>
+              <div
+                v-else-if="option.currentValue * 1024 < machineSpec.memory * 0.2"
+                class="form-group warning"
+              >
+                <div class="note">
+                  {{ t.memoryUsageIsLessThanNPercent(20)
+                  }}{{ t.increasingItMayImproveAIPerformance }}
+                </div>
+              </div>
+            </div>
+            <!-- 早期 ponder -->
+            <div v-if="option.name === 'USI_Ponder' && option.type === 'check'" class="additional">
+              <ToggleButton v-model:value="engine.enableEarlyPonder" :label="t.earlyPonder" />
+              <div v-show="engine.enableEarlyPonder" class="form-group warning">
+                <div class="note">
+                  {{ t.earlyPonderFeatureSendsPonderhitCommandWithYaneuraOusNonStandardOptions }}
+                  {{ t.ifYourEngineNotSupportTheOptionsItMayCauseUnexpectedBehavior }}
                 </div>
               </div>
             </div>
           </div>
         </div>
+        <!-- 定跡 (GUI拡張) -->
+        <div v-show="detailed && !filterWords.length" class="row option">
+          <div class="option-name">{{ t.frontendBook }}</div>
+          <div class="option-value">
+            <div class="row center">
+              <ToggleButton v-model:value="extraBook.enabled" />
+              <div v-show="extraBook.enabled" class="option-value-control">
+                <input v-model="extraBook.filePath" class="option-value-filename" type="text" />
+                <button
+                  class="thin"
+                  @click="
+                    selectFile((value) => {
+                      extraBook.filePath = value;
+                    })
+                  "
+                >
+                  {{ t.select }}
+                </button>
+              </div>
+            </div>
+            <ToggleButton
+              v-show="extraBook.enabled"
+              v-model:value="extraBook.onTheFly"
+              class="additional"
+              label="On-the-fly"
+            />
+          </div>
+        </div>
+        <div class="menu">
+          <button v-show="!detailed" class="thin option-control" @click="detailed = true">
+            {{ t.showAllOptions }}
+          </button>
+        </div>
       </div>
+    </div>
+    <div class="menu row">
       <button class="wide" @click="reset()">
         {{ t.resetToEngineDefaultValues }}
       </button>
-      <div class="main-buttons">
-        <button data-hotkey="Enter" autofocus @click="ok()">
-          {{ okButtonText }}
-        </button>
-        <button data-hotkey="Escape" @click="cancel()">
-          {{ t.cancel }}
-        </button>
-      </div>
-    </dialog>
-  </div>
+      <button class="wide" @click="copyOptions()">
+        <Icon :icon="IconType.COPY" />
+        {{ t.copy }}
+      </button>
+      <button class="wide" @click="pasteOptions()">
+        <Icon :icon="IconType.PASTE" />
+        {{ t.paste }}
+      </button>
+    </div>
+    <div class="main-buttons">
+      <button data-hotkey="Enter" autofocus @click="ok()">
+        {{ okButtonText }}
+      </button>
+      <button data-hotkey="Escape" @click="cancel()">
+        {{ t.cancel }}
+      </button>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
 import { t, usiOptionNameMap } from "@/common/i18n";
 import { filter as filterString } from "@/common/helpers/string";
-import { showModalDialog } from "@/renderer/helpers/dialog.js";
-import { readInputAsNumber } from "@/renderer/helpers/form.js";
 import api from "@/renderer/ipc/api";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
 import {
+  compressUSIEngineOptionsClipboardData,
+  ConsiderationMode,
+  decompressUSIEngineOptionsClipboardData,
   emptyUSIEngine,
+  emptyUSIEngineExtraBookConfig,
+  FVScale,
   getUSIEngineOptionCurrentValue,
   mergeUSIEngine,
+  NodesLimit,
+  NumberOfThreads,
+  Threads,
   USIEngine,
+  USIEngineExtraBookConfig,
+  USIEngineMetadata,
+  USIEngineOption,
+  USIEngineOptionsClipboardData,
+  USIHash,
+  USIPonder,
 } from "@/common/settings/usi";
-import { computed, onBeforeUnmount, onMounted, onUpdated, PropType, ref } from "vue";
+import { computed, onMounted, PropType, ref } from "vue";
 import { useAppSettings } from "@/renderer/store/settings";
 import HorizontalSelector from "@/renderer/view/primitive/HorizontalSelector.vue";
 import ToggleButton from "@/renderer/view/primitive/ToggleButton.vue";
 import ComboBox from "@/renderer/view/primitive/ComboBox.vue";
 import { useErrorStore } from "@/renderer/store/error";
 import { useBusyState } from "@/renderer/store/busy";
+import { useConfirmationStore } from "@/renderer/store/confirm";
+import DialogFrame from "./DialogFrame.vue";
+import { useMessageStore } from "@/renderer/store/message";
+import Icon from "@/renderer/view/primitive/Icon.vue";
+import { IconType } from "@/renderer/assets/icons";
+import { MachineSpec } from "@/common/advanced/monitor";
+import PercentageBarChart from "@/renderer/view/primitive/PercentageBarChart.vue";
 
 const props = defineProps({
   latest: {
@@ -236,31 +347,75 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
+type Option = USIEngineOption & {
+  displayName: string;
+  currentValue: string | number;
+};
+
 const busyState = useBusyState();
 const appSettings = useAppSettings();
-const dialog = ref();
-const engineNameInput = ref();
-const enableEarlyPonder = ref(false);
-const filter = ref();
-const filterWords = ref([] as string[]);
-const inputs = ref({} as { [key: string]: HTMLInputElement | HTMLSelectElement });
-const selectors = ref(
-  {} as { [key: string]: InstanceType<typeof HorizontalSelector> | InstanceType<typeof ComboBox> },
-);
+const detailed = ref(appSettings.showEngineOptionDetails);
+const filter = ref("");
+const filterWords = computed(() => filter.value.split(/ +/).filter((s) => s));
 const engine = ref(emptyUSIEngine());
-let defaultValueLoaded = false;
-let defaultValueApplied = false;
+const options = ref<Option[]>([]);
+const optionVisibility = computed(() =>
+  options.value.map((option) => {
+    if (detailed.value) {
+      return (
+        filterWords.value.length === 0 ||
+        (option.displayName && filterString(option.displayName, filterWords.value)) ||
+        filterString(option.name, filterWords.value)
+      );
+    } else {
+      return (
+        option.name === Threads ||
+        option.name === NumberOfThreads ||
+        option.name === USIHash ||
+        option.name === USIPonder ||
+        option.name === FVScale ||
+        option.name === NodesLimit ||
+        option.name === ConsiderationMode
+      );
+    }
+  }),
+);
+const extraBook = ref<USIEngineExtraBookConfig>({
+  enabled: false,
+  filePath: "",
+  onTheFly: false,
+});
+const machineSpec = ref<MachineSpec>({ cpuCores: 0, memory: 0 });
+const metadata = ref<USIEngineMetadata>({ isShellScript: false });
+
+function optionOrder(option: USIEngineOption): number {
+  switch (option.name) {
+    case Threads:
+    case NumberOfThreads:
+      return -100;
+    case USIHash:
+      return -99;
+    default:
+      return option.order;
+  }
+}
+
 busyState.retain();
 onMounted(async () => {
-  showModalDialog(dialog.value, cancel);
-  installHotKeyForDialog(dialog.value);
   try {
     const timeoutSeconds = appSettings.engineTimeoutSeconds;
     engine.value = await api.getUSIEngineInfo(props.latest.path, timeoutSeconds);
+    metadata.value = await api.getUSIEngineMetadata(props.latest.path);
     mergeUSIEngine(engine.value, props.latest);
-    engineNameInput.value.value = engine.value.name;
-    enableEarlyPonder.value = engine.value.enableEarlyPonder;
-    defaultValueLoaded = true;
+    options.value = Object.values(engine.value.options)
+      .sort((a, b): number => (optionOrder(a) < optionOrder(b) ? -1 : 1))
+      .map((option) => ({
+        displayName: appSettings.translateEngineOptionName ? usiOptionNameMap[option.name] : "",
+        ...option,
+        currentValue: getUSIEngineOptionCurrentValue(option) ?? (option.type === "spin" ? 0 : ""),
+      }));
+    extraBook.value = engine.value.extraBook || emptyUSIEngineExtraBookConfig();
+    machineSpec.value = await api.getMachineSpec();
   } catch (e) {
     useErrorStore().add(e);
     emit("cancel");
@@ -268,62 +423,44 @@ onMounted(async () => {
     busyState.release();
   }
 });
-const options = computed(() =>
-  Object.values(engine.value.options)
-    .sort((a, b): number => (a.order < b.order ? -1 : 1))
-    .map((option) => {
-      const ret = {
-        displayName: "",
-        ...option,
-        value: getUSIEngineOptionCurrentValue(option),
-        visible: true,
-      };
-      if (appSettings.translateEngineOptionName) {
-        ret.displayName = usiOptionNameMap[option.name];
-      }
-      if (filterWords.value.length > 0) {
-        ret.visible =
-          (ret.displayName && filterString(ret.displayName, filterWords.value)) ||
-          filterString(ret.name, filterWords.value);
-      }
-      return ret;
-    }),
-);
-onUpdated(() => {
-  if (!defaultValueLoaded || defaultValueApplied) {
-    return;
-  }
-  for (const option of options.value) {
-    if (option.value === undefined) {
-      continue;
-    }
-    if (option.type === "check" || option.type === "combo") {
-      selectors.value[option.name].setValue((option.value as string) || "");
-    } else if (inputs.value[option.name]) {
-      inputs.value[option.name].value = option.value + "";
-    }
-  }
-  defaultValueApplied = true;
-});
-onBeforeUnmount(() => {
-  uninstallHotKeyForDialog(dialog.value);
-});
-const updateFilter = () => {
-  filterWords.value = String(filter.value.value)
-    .trim()
-    .split(/ +/)
-    .filter((s) => s);
-};
+
 const openEngineDir = () => {
   api.openExplorer(engine.value.path);
 };
-const selectFile = async (name: string) => {
+
+const replaceEnginePath = async () => {
+  busyState.retain();
+  try {
+    const path = await api.showSelectUSIEngineDialog();
+    if (!path) {
+      return;
+    }
+    const timeoutSeconds = appSettings.engineTimeoutSeconds;
+    useConfirmationStore().show({
+      message: t.incompatibleOptionsWillBeDiscardedDoYouReallyWantToReplaceTheEnginePath,
+      onOk: async () => {
+        try {
+          const newEngine = await api.getUSIEngineInfo(path, timeoutSeconds);
+          mergeUSIEngine(newEngine, engine.value); // もとの設定を引き継ぐ
+          engine.value = newEngine;
+        } catch (e) {
+          useErrorStore().add(e);
+        }
+      },
+    });
+  } catch (e) {
+    useErrorStore().add(e);
+  } finally {
+    busyState.release();
+  }
+};
+
+const selectFile = async (callback: (value: string) => void) => {
   busyState.retain();
   try {
     const path = await api.showSelectFileDialog();
-    const elem = inputs.value[name];
-    if (path && elem) {
-      elem.value = path;
+    if (path) {
+      callback(path);
     }
   } catch (e) {
     useErrorStore().add(e);
@@ -331,53 +468,124 @@ const selectFile = async (name: string) => {
     busyState.release();
   }
 };
-const sendOption = async (name: string) => {
+
+const sendOptionButtonSignal = async (name: string) => {
   busyState.retain();
   try {
     const timeoutSeconds = appSettings.engineTimeoutSeconds;
-    await api.sendUSISetOption(engine.value.path, name, timeoutSeconds);
+    await api.sendUSIOptionButtonSignal(engine.value.path, name, timeoutSeconds);
   } catch (e) {
     useErrorStore().add(e);
   } finally {
     busyState.release();
   }
 };
+
 const reset = () => {
-  engineNameInput.value.value = engine.value.defaultName;
-  enableEarlyPonder.value = engine.value.enableEarlyPonder;
-  Object.values(engine.value.options).forEach((option) => {
-    const value =
-      option.type !== "button" && option.default !== undefined ? option.default + "" : "";
-    if (option.type === "check" || option.type === "combo") {
-      selectors.value[option.name].setValue(value);
-    } else if (inputs.value[option.name]) {
-      inputs.value[option.name].value = value;
-    }
-  });
-};
-const ok = () => {
-  engine.value.name = engineNameInput.value.value;
-  engine.value.enableEarlyPonder = enableEarlyPonder.value;
-  Object.values(engine.value.options).forEach((option) => {
+  engine.value.name = engine.value.defaultName;
+  engine.value.enableEarlyPonder = false;
+  extraBook.value = {
+    enabled: false,
+    filePath: "",
+    onTheFly: false,
+  };
+  options.value.forEach((option) => {
     if (option.type === "button") {
       return;
     }
-    if (option.type === "check") {
-      option.value = (selectors.value[option.name].getValue() as "true" | "false") || undefined;
-    } else if (option.type === "combo") {
-      option.value = selectors.value[option.name].getValue() || undefined;
-    } else if (inputs.value[option.name]) {
-      const elem = inputs.value[option.name];
-      option.value = !elem.value
-        ? undefined
-        : option.type === "spin"
-          ? readInputAsNumber(elem as HTMLInputElement)
-          : elem.value;
-    }
+    option.currentValue = option.default ?? (option.type === "spin" ? 0 : "");
   });
+};
+
+const buildEngineOptions = () => {
+  const newEngineOptions = { ...engine.value.options };
+  options.value.forEach((option) => {
+    const org = engine.value.options[option.name];
+    if (!org) {
+      return;
+    }
+    const engineOption = { ...org };
+    if (engineOption.type === "button") {
+      return;
+    }
+    if (engineOption.type === "check") {
+      engineOption.value = (option.currentValue as "true" | "false" | "") || undefined;
+    } else if (engineOption.type === "combo") {
+      engineOption.value = (option.currentValue as string) || undefined;
+    } else if (engineOption.type === "spin") {
+      engineOption.value = option.currentValue as number;
+    } else {
+      engineOption.value = (option.currentValue as string) || undefined;
+    }
+    newEngineOptions[option.name] = engineOption;
+  });
+  return newEngineOptions;
+};
+
+const restoreEngineOptions = (newOptions: { [name: string]: USIEngineOption }) => {
+  options.value.forEach((option) => {
+    const newOption = newOptions[option.name];
+    if (!newOption || newOption.type === "button" || newOption.type !== option.type) {
+      return;
+    }
+    option.currentValue =
+      getUSIEngineOptionCurrentValue(newOption) ?? (option.type === "spin" ? 0 : "");
+  });
+};
+
+const copyOptions = async () => {
+  const data: USIEngineOptionsClipboardData = {
+    schema: "es://usi-engine-options-clipboard-data",
+    options: buildEngineOptions(),
+    enableEarlyPonder: engine.value.enableEarlyPonder,
+    extraBook: extraBook.value,
+  };
+  try {
+    const base64 = await compressUSIEngineOptionsClipboardData(data);
+    await navigator.clipboard.writeText(base64);
+    useMessageStore().enqueue({ text: t.copiedToClipboard });
+  } catch (e) {
+    useErrorStore().add(e);
+  }
+};
+
+const pasteOptions = async () => {
+  busyState.retain();
+  try {
+    const base64 = await navigator.clipboard.readText();
+    const data = await decompressUSIEngineOptionsClipboardData(base64);
+    restoreEngineOptions(data.options);
+    engine.value.enableEarlyPonder = data.enableEarlyPonder;
+    extraBook.value = data.extraBook || {
+      enabled: false,
+      filePath: "",
+      onTheFly: false,
+    };
+    useMessageStore().enqueue({ text: t.pastedFromClipboard });
+  } catch (e) {
+    useErrorStore().add(e);
+  } finally {
+    busyState.release();
+  }
+};
+
+const saveAppSettings = () => {
+  if (detailed.value !== appSettings.showEngineOptionDetails) {
+    appSettings.updateAppSettings({
+      showEngineOptionDetails: detailed.value,
+    });
+  }
+};
+
+const ok = () => {
+  saveAppSettings();
+  engine.value.options = buildEngineOptions();
+  engine.value.extraBook = extraBook.value;
   emit("ok", engine.value);
 };
+
 const cancel = () => {
+  saveAppSettings();
   emit("cancel");
 };
 </script>
@@ -396,6 +604,10 @@ const cancel = () => {
 }
 .option-filter {
   margin: 0px 5px 5px 5px;
+  align-items: center;
+}
+.option-filter > *:not(:first-child) {
+  margin-left: 30px;
 }
 .filter {
   width: 100%;
@@ -437,13 +649,33 @@ const cancel = () => {
 .option button {
   vertical-align: top;
 }
+.option button:not(:last-child) {
+  margin-right: 5px;
+}
 .option-default-value {
+  padding: 0.3em;
   font-size: 0.7em;
   white-space: nowrap;
   font-weight: 600;
   opacity: 0.7;
 }
+.option-default-value.highlight {
+  color: var(--text-color-warning);
+  background-color: var(--text-bg-color-warning);
+}
 .option .additional {
   margin-top: 5px;
+}
+.bar-chart {
+  margin: 10px 0 5px 0;
+  width: 100%;
+  border: 1px solid var(--dialog-border-color);
+}
+.option-control {
+  width: calc(100% - 10px);
+  margin: 10px 5px;
+}
+.menu > *:not(:first-child) {
+  margin-left: 5px;
 }
 </style>

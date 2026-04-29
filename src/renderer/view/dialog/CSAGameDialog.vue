@@ -1,271 +1,239 @@
 <template>
-  <div>
-    <dialog ref="dialog" class="root">
-      <div class="title">{{ t.csaProtocolOnlineGame }}</div>
-      <div class="form-group scroll">
-        <div v-if="!logEnabled" class="form-group warning">
+  <DialogFrame limited @cancel="onCancel">
+    <div class="title">{{ t.csaProtocolOnlineGame }}</div>
+    <div class="form-group scroll">
+      <div v-if="!logEnabled" class="form-group warning">
+        <div class="note">
+          {{ t.someLogsDisabled }}<br />
+          {{ t.logsRecommendedForCSAProtocol }}<br />
+          {{ t.pleaseEnableLogsAndRestart }}
+        </div>
+      </div>
+      <div v-if="hwaEnabled" class="form-group warning">
+        <div class="note">
+          {{ t.hwaEnabled }}<br />
+          {{ t.hwaIsNotRecommendedForLongGames }}<br />
+          {{ t.pleaseDisableHWAAndRestart }}
+        </div>
+      </div>
+      <div class="form-group">
+        <div>{{ t.player }}</div>
+        <PlayerSelector
+          v-model:player-uri="playerURI"
+          :contains-human="true"
+          :contains-basic-engines="true"
+          :engines="engines"
+          :default-tag="getPredefinedUSIEngineTag('game')"
+          :display-ponder-state="true"
+          :display-thread-state="true"
+          :display-multi-pv-state="true"
+          @update-engines="onUpdatePlayerSettings"
+        />
+        <hr v-if="uri.isUSIEngine(playerURI)" />
+        <div v-if="uri.isUSIEngine(playerURI)" class="form-item">
+          <div class="form-item-label-wide">{{ t.restartItEveryGame }}</div>
+          <ToggleButton v-model:value="csaGameSettings.restartPlayerEveryGame" />
+        </div>
+      </div>
+      <div class="form-group">
+        <div>{{ t.server }}</div>
+        <div class="form-item">
+          <div class="form-item-label-wide">
+            {{ t.selectFromHistory }}
+          </div>
+          <select class="long-text" value="0" @change="onChangeHistory">
+            <option v-if="history.serverHistory.length === 0" value="0">
+              {{ t.noHistory }}
+            </option>
+            <option v-for="(server, index) in history.serverHistory" :key="index" :value="index">
+              {{ server.host }}:{{ server.port }} {{ server.id }}
+            </option>
+          </select>
+        </div>
+        <hr />
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.version }}</div>
+          <select v-model="csaGameSettings.server.protocolVersion" class="long-text">
+            <option :value="CSAProtocolVersion.V121">
+              {{ t.csaProtocolV121 }}
+            </option>
+            <option :value="CSAProtocolVersion.V121_FLOODGATE">
+              {{ t.csaProtocolV121WithPVComments }}
+            </option>
+          </select>
+        </div>
+        <div
+          v-if="csaGameSettings.server.protocolVersion === CSAProtocolVersion.V121"
+          class="form-group warning"
+        >
           <div class="note">
-            {{ t.someLogsDisabled }}
-            {{ t.logsRecommendedForCSAProtocol }}
-            {{ t.pleaseEnableLogsAndRestart }}
+            {{ t.notSendPVOnStandardCSAProtocol }}
           </div>
         </div>
-        <div class="form-group">
-          <div>{{ t.player }}</div>
-          <PlayerSelector
-            :player-uri="playerURI"
-            :contains-human="true"
-            :engines="engines"
-            :filter-label="USIEngineLabel.GAME"
-            :display-ponder-state="true"
-            :display-thread-state="true"
-            :display-multi-pv-state="true"
-            @update-engines="onUpdatePlayerSettings"
-            @select-player="onSelectPlayer"
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.host }}</div>
+          <input
+            v-model.trim="csaGameSettings.server.host"
+            class="long-text"
+            list="csa-server-host"
+            type="text"
+            :placeholder="`${t.eg} ${floodgateDomain}`"
           />
-          <hr v-if="uri.isUSIEngine(playerURI)" />
-          <div v-if="uri.isUSIEngine(playerURI)" class="form-item">
-            <div class="form-item-label-wide">{{ t.restartItEveryGame }}</div>
-            <ToggleButton
-              :value="restartPlayerEveryGame"
-              @change="
-                (value: boolean) => {
-                  restartPlayerEveryGame = value;
-                }
-              "
-            />
+          <datalist id="csa-server-host">
+            <option :value="officialCSAServerDomain"></option>
+            <option :value="floodgateDomain"></option>
+            <option value="localhost"></option>
+            <option value="127.0.0.1"></option>
+          </datalist>
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.portNumber }}</div>
+          <input
+            v-model.number="csaGameSettings.server.port"
+            class="number"
+            list="csa-server-port-number"
+            type="number"
+            :placeholder="`${t.eg} 4081`"
+          />
+          <datalist id="csa-server-port-number">
+            <option value="4081"></option>
+          </datalist>
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">ID</div>
+          <input v-model.trim="csaGameSettings.server.id" class="long-text" type="text" />
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.password }}</div>
+          <input
+            v-model.trim="csaGameSettings.server.password"
+            class="long-text"
+            :type="revealPassword ? 'text' : 'password'"
+          />
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide"></div>
+          <ToggleButton v-model:value="revealPassword" :label="t.revealPassword" />
+        </div>
+        <div v-if="isFloodgate && !validFloodgatePassword" class="form-group warning">
+          <div class="note">{{ t.floodgatePasswordShouldStartWithGameName }}</div>
+        </div>
+        <div v-else-if="isFloodgate && !officialFloodgateGameName" class="form-group warning">
+          <div class="note">{{ t.thisIsNotFloodgateOfficialGameName }}</div>
+        </div>
+        <div v-if="!isEncryptionAvailable" class="form-group warning">
+          <div class="note">
+            {{ t.passwordWillSavedPlaintextBecauseOSSideEncryptionNotAvailable }}<br />
+            {{ t.pleaseUncheckSaveHistoryIfNotWantSave }}
           </div>
         </div>
-        <div class="form-group">
-          <div>{{ t.server }}</div>
-          <div class="form-item">
-            <div class="form-item-label-wide">
-              {{ t.selectFromHistory }}
-            </div>
-            <select class="long-text" value="0" @change="onChangeHistory">
-              <option v-if="history.serverHistory.length === 0" value="0">
-                {{ t.noHistory }}
-              </option>
-              <option v-for="(server, index) in history.serverHistory" :key="index" :value="index">
-                {{ server.host }}:{{ server.port }} {{ server.id }}
-              </option>
-            </select>
-          </div>
-          <hr />
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.version }}</div>
-            <select
-              ref="protocolVersion"
-              class="long-text"
-              value="CSA_v121"
-              @change="onChangeProtocolVersion"
-            >
-              <option :value="CSAProtocolVersion.V121">
-                {{ t.csaProtocolV121 }}
-              </option>
-              <option :value="CSAProtocolVersion.V121_FLOODGATE">
-                {{ t.csaProtocolV121WithPVComments }}
-              </option>
-            </select>
-          </div>
-          <div
-            v-if="selectedProtocolVersion === CSAProtocolVersion.V121"
-            class="form-group warning"
-          >
-            <div class="note">
-              {{ t.notSendPVOnStandardCSAProtocol }}
-            </div>
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.host }}</div>
-            <input ref="host" class="long-text" list="csa-server-host" type="text" />
-            <datalist id="csa-server-host">
-              <option value="gserver.computer-shogi.org"></option>
-              <option value="wdoor.c.u-tokyo.ac.jp"></option>
-              <option value="localhost"></option>
-              <option value="127.0.0.1"></option>
-            </datalist>
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.portNumber }}</div>
-            <input ref="port" class="number" list="csa-server-port-number" type="number" />
-            <datalist id="csa-server-port-number">
-              <option value="4081"></option>
-            </datalist>
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">ID</div>
-            <input ref="id" class="long-text" type="text" />
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.password }}</div>
-            <input ref="password" class="long-text" type="password" />
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide"></div>
-            <ToggleButton
-              :label="t.revealPassword"
-              :value="false"
-              @change="onTogglePasswordVisibility"
-            />
-          </div>
-          <div class="form-group warning">
-            <div v-if="isEncryptionAvailable" class="note">
-              {{ t.csaProtocolSendPlaintextPassword }}
-            </div>
-            <div v-else class="note">
-              {{ t.passwordWillSavedPlaintextBecauseOSSideEncryptionNotAvailable }}
-              {{ t.pleaseUncheckSaveHistoryIfNotWantSave }}
-              {{ t.csaProtocolSendPlaintextPasswordRegardlessOfHistory }}
-            </div>
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.keepaliveInitialDelay }}</div>
-            <input
-              ref="keepaliveInitialDelay"
-              class="number"
-              type="number"
-              value="10"
-              min="1"
-              max="7200"
-            />
-            <div class="form-item-small-label">
-              {{ t.secondsSuffix }} ({{ t.between(1, 7200) }})
-            </div>
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.blankLinePing }}</div>
-            <ToggleButton
-              :value="blankLinePing"
-              @change="
-                (value: boolean) => {
-                  blankLinePing = value;
-                }
-              "
-            />
-          </div>
-          <div v-show="blankLinePing" class="form-item">
-            <div class="form-item-label-wide">{{ t.blankLinePingInitialDelay }}</div>
-            <input
-              ref="blankLineInitialDelay"
-              class="number"
-              type="number"
-              value="40"
-              min="30"
-              max="7200"
-            />
-            <div class="form-item-small-label">
-              {{ t.secondsSuffix }} ({{ t.between(30, 7200) }})
-            </div>
-          </div>
-          <div v-show="blankLinePing" class="form-item">
-            <div class="form-item-label-wide">{{ t.blankLinePingInterval }}</div>
-            <input
-              ref="blankLineInterval"
-              class="number"
-              type="number"
-              value="40"
-              min="30"
-              max="7200"
-            />
-            <div class="form-item-small-label">
-              {{ t.secondsSuffix }} ({{ t.between(30, 7200) }})
-            </div>
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.saveHistory }}</div>
-            <ToggleButton
-              :value="saveHistory"
-              @change="
-                (value: boolean) => {
-                  saveHistory = value;
-                }
-              "
-            />
-          </div>
-          <hr />
-          <div class="form-item">
-            <div class="form-item-label-wide number">
-              {{ t.gameRepetition }}
-            </div>
-            <input ref="repeat" class="number" type="number" min="1" />
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.autoRelogin }}</div>
-            <ToggleButton
-              :value="autoRelogin"
-              @change="
-                (value: boolean) => {
-                  autoRelogin = value;
-                }
-              "
-            />
-          </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.keepaliveInitialDelay }}</div>
+          <input
+            v-model.number="csaGameSettings.server.tcpKeepalive.initialDelay"
+            class="number"
+            type="number"
+            value="10"
+            min="1"
+            max="7200"
+          />
+          <div class="form-item-small-label">{{ t.secondsSuffix }} ({{ t.between(1, 7200) }})</div>
         </div>
-        <div class="form-group">
-          <div class="form-item">
-            <div class="form-item-label-wide">{{ t.outputComments }}</div>
-            <ToggleButton
-              :value="enableComment"
-              @change="
-                (value: boolean) => {
-                  enableComment = value;
-                }
-              "
-            />
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.blankLinePing }}</div>
+          <ToggleButton v-model:value="blankLinePing" />
+        </div>
+        <div v-show="blankLinePing" class="form-item">
+          <div class="form-item-label-wide">{{ t.blankLinePingInitialDelay }}</div>
+          <input
+            v-model.number="blankLinePingSettings.initialDelay"
+            class="number"
+            type="number"
+            value="40"
+            min="30"
+            max="7200"
+          />
+          <div class="form-item-small-label">{{ t.secondsSuffix }} ({{ t.between(30, 7200) }})</div>
+        </div>
+        <div v-show="blankLinePing" class="form-item">
+          <div class="form-item-label-wide">{{ t.blankLinePingInterval }}</div>
+          <input
+            v-model.number="blankLinePingSettings.interval"
+            class="number"
+            type="number"
+            value="40"
+            min="30"
+            max="7200"
+          />
+          <div class="form-item-small-label">{{ t.secondsSuffix }} ({{ t.between(30, 7200) }})</div>
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.saveHistory }}</div>
+          <ToggleButton v-model:value="saveHistory" />
+        </div>
+        <hr />
+        <div class="form-item">
+          <div class="form-item-label-wide number">
+            {{ t.gameRepetition }}
           </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">
-              {{ t.saveRecordAutomatically }}
-            </div>
-            <ToggleButton
-              :value="enableAutoSave"
-              @change="
-                (value: boolean) => {
-                  enableAutoSave = value;
-                }
-              "
-            />
-          </div>
-          <div class="form-item">
-            <div class="form-item-label-wide">
-              {{ t.adjustBoardAutomatically }}
-            </div>
-            <ToggleButton
-              :value="autoFlip"
-              @change="
-                (value: boolean) => {
-                  autoFlip = value;
-                }
-              "
-            />
-          </div>
+          <input v-model.number="csaGameSettings.repeat" class="number" type="number" min="1" />
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.autoRelogin }}</div>
+          <ToggleButton v-model:value="csaGameSettings.autoRelogin" />
         </div>
       </div>
-      <div class="main-buttons">
-        <button data-hotkey="Mod+c" @click="onExportYAML()">
-          <Icon :icon="IconType.COPY" />YAML
-        </button>
-        <button @click="onExportJSON()"><Icon :icon="IconType.COPY" />JSON</button>
-        <button @click="onExportCommand()"><Icon :icon="IconType.COPY" />{{ t.command }}</button>
+      <div class="form-group">
+        <div class="form-item">
+          <div class="form-item-label-wide">{{ t.outputComments }}</div>
+          <ToggleButton v-model:value="csaGameSettings.enableComment" />
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">
+            {{ t.adjustBoardAutomatically }}
+          </div>
+          <ToggleButton v-model:value="csaGameSettings.autoFlip" />
+        </div>
+        <div class="form-item">
+          <div class="form-item-label-wide">
+            {{ t.saveRecordAutomatically }}
+          </div>
+          <ToggleButton v-model:value="csaGameSettings.enableAutoSave" />
+          <input
+            v-model="csaGameSettings.autoSaveDirectory"
+            class="file-path"
+            type="text"
+            :disabled="!csaGameSettings.enableAutoSave"
+          />
+          <button class="thin" @click="selectAutoSaveDirectory">
+            {{ t.select }}
+          </button>
+        </div>
       </div>
-      <div class="main-buttons">
-        <button data-hotkey="Enter" autofocus @click="onStart()">
-          {{ t.startGame }}
-        </button>
-        <button data-hotkey="Escape" @click="onCancel()">
-          {{ t.cancel }}
-        </button>
-      </div>
-    </dialog>
-  </div>
+    </div>
+    <div class="main-buttons">
+      <button data-hotkey="Mod+c" @click="onExportYAML()">
+        <Icon :icon="IconType.COPY" />YAML
+      </button>
+      <button @click="onExportJSON()"><Icon :icon="IconType.COPY" />JSON</button>
+      <button @click="onExportCommand()"><Icon :icon="IconType.COPY" />{{ t.command }}</button>
+    </div>
+    <div class="main-buttons">
+      <button data-hotkey="Enter" autofocus @click="onStart()">
+        {{ t.startGame }}
+      </button>
+      <button data-hotkey="Escape" @click="onCancel()">
+        {{ t.cancel }}
+      </button>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
 import YAML from "yaml";
 import { t } from "@/common/i18n";
-import { USIEngineLabel, USIEngine, USIEngines } from "@/common/settings/usi";
-import { ref, onMounted, computed, onUpdated, onBeforeUnmount } from "vue";
+import { USIEngine, USIEngines, getPredefinedUSIEngineTag } from "@/common/settings/usi";
+import { ref, onMounted, computed } from "vue";
 import api from "@/renderer/ipc/api";
 import { useStore } from "@/renderer/store";
 import {
@@ -276,13 +244,12 @@ import {
   defaultCSAGameSettingsHistory,
   exportCSAGameSettingsForCLI,
   compressCSAGameSettingsForCLI,
+  defaultCSAGameSettings,
+  BlankLinePingSettings,
 } from "@/common/settings/csa";
-import { showModalDialog } from "@/renderer/helpers/dialog.js";
 import * as uri from "@/common/uri.js";
 import PlayerSelector from "@/renderer/view/dialog/PlayerSelector.vue";
 import { PlayerSettings } from "@/common/settings/player";
-import { readInputAsNumber } from "@/renderer/helpers/form.js";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
 import { useAppSettings } from "@/renderer/store/settings";
 import ToggleButton from "@/renderer/view/primitive/ToggleButton.vue";
 import Icon from "@/renderer/view/primitive/Icon.vue";
@@ -290,36 +257,32 @@ import { IconType } from "@/renderer/assets/icons";
 import { useErrorStore } from "@/renderer/store/error";
 import { useBusyState } from "@/renderer/store/busy";
 import { useMessageStore } from "@/renderer/store/message";
+import { useConfirmationStore } from "@/renderer/store/confirm";
+import {
+  floodgateDomain,
+  isOfficialFloodgateGameName,
+  isValidFloodgatePassword,
+  officialCSAServerDomain,
+} from "@/common/game/csa";
+import DialogFrame from "./DialogFrame.vue";
 
 const store = useStore();
 const busyState = useBusyState();
 const messageStore = useMessageStore();
 const appSettings = useAppSettings();
-const dialog = ref();
-const protocolVersion = ref();
-const selectedProtocolVersion = ref(CSAProtocolVersion.V121);
-const host = ref();
-const port = ref();
-const id = ref();
-const password = ref();
-const keepaliveInitialDelay = ref();
+const csaGameSettings = ref(defaultCSAGameSettings());
 const blankLinePing = ref(false);
-const blankLineInitialDelay = ref();
-const blankLineInterval = ref();
+const blankLinePingSettings = ref<BlankLinePingSettings>({
+  initialDelay: 40,
+  interval: 40,
+});
+const revealPassword = ref(false);
 const saveHistory = ref(true);
-const repeat = ref();
-const autoRelogin = ref(false);
-const restartPlayerEveryGame = ref(false);
-const enableComment = ref(false);
-const enableAutoSave = ref(false);
-const autoFlip = ref(false);
 const isEncryptionAvailable = ref(false);
 const history = ref(defaultCSAGameSettingsHistory());
 const engines = ref(new USIEngines());
 const playerURI = ref("");
 
-let defaultValueLoaded = false;
-let defaultValueApplied = false;
 busyState.retain();
 
 onMounted(async () => {
@@ -327,9 +290,13 @@ onMounted(async () => {
     isEncryptionAvailable.value = await api.isEncryptionAvailable();
     history.value = await api.loadCSAGameSettingsHistory();
     engines.value = await api.loadUSIEngines();
-    showModalDialog(dialog.value, onCancel);
-    installHotKeyForDialog(dialog.value);
-    defaultValueLoaded = true;
+    const settings = buildCSAGameSettingsByHistory(history.value, 0);
+    csaGameSettings.value = JSON.parse(JSON.stringify(settings)); // history を書き換えないために deep copy が必要
+    if (csaGameSettings.value.server.blankLinePing) {
+      blankLinePing.value = true;
+      blankLinePingSettings.value = csaGameSettings.value.server.blankLinePing;
+    }
+    playerURI.value = csaGameSettings.value.player.uri;
   } catch (e) {
     useErrorStore().add(e);
     store.destroyModalDialog();
@@ -338,34 +305,15 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => {
-  uninstallHotKeyForDialog(dialog.value);
-});
+const isFloodgate = computed(() => csaGameSettings.value.server.host === floodgateDomain);
 
-onUpdated(() => {
-  if (!defaultValueLoaded || defaultValueApplied) {
-    return;
-  }
-  const defaultSettings = buildCSAGameSettingsByHistory(history.value, 0);
-  protocolVersion.value.value = selectedProtocolVersion.value =
-    defaultSettings.server.protocolVersion;
-  host.value.value = defaultSettings.server.host;
-  port.value.value = defaultSettings.server.port;
-  id.value.value = defaultSettings.server.id;
-  password.value.value = defaultSettings.server.password;
-  keepaliveInitialDelay.value.value = defaultSettings.server.tcpKeepalive.initialDelay;
-  blankLinePing.value = !!defaultSettings.server.blankLinePing;
-  blankLineInitialDelay.value.value = defaultSettings.server.blankLinePing?.initialDelay || 40;
-  blankLineInterval.value.value = defaultSettings.server.blankLinePing?.interval || 40;
-  repeat.value.value = defaultSettings.repeat;
-  autoRelogin.value = defaultSettings.autoRelogin;
-  restartPlayerEveryGame.value = defaultSettings.restartPlayerEveryGame;
-  enableComment.value = defaultSettings.enableComment;
-  enableAutoSave.value = defaultSettings.enableAutoSave;
-  autoFlip.value = defaultSettings.autoFlip;
-  playerURI.value = defaultSettings.player.uri;
-  defaultValueApplied = true;
-});
+const validFloodgatePassword = computed(() =>
+  isValidFloodgatePassword(csaGameSettings.value.server.password),
+);
+
+const officialFloodgateGameName = computed(() =>
+  isOfficialFloodgateGameName(csaGameSettings.value.server.password),
+);
 
 const buildPlayerSettings = (playerURI: string): PlayerSettings => {
   if (uri.isUSIEngine(playerURI) && engines.value.hasEngine(playerURI)) {
@@ -377,87 +325,90 @@ const buildPlayerSettings = (playerURI: string): PlayerSettings => {
     };
   }
   return {
-    name: "人",
+    name: uri.isBasicEngine(playerURI) ? uri.basicEngineName(playerURI) : t.human,
     uri: uri.ES_HUMAN,
   };
 };
 
 const buildConfig = (): CSAGameSettings => {
   return {
+    ...csaGameSettings.value,
     player: buildPlayerSettings(playerURI.value),
     server: {
-      protocolVersion: protocolVersion.value.value,
-      host: String(host.value.value || "").trim(),
-      port: Number(port.value.value),
-      id: String(id.value.value || "").trim(),
-      password: String(password.value.value || "").trim(),
-      tcpKeepalive: {
-        initialDelay: readInputAsNumber(keepaliveInitialDelay.value),
-      },
-      blankLinePing: blankLinePing.value
-        ? {
-            initialDelay: readInputAsNumber(blankLineInitialDelay.value),
-            interval: readInputAsNumber(blankLineInterval.value),
-          }
-        : undefined,
+      ...csaGameSettings.value.server,
+      blankLinePing: blankLinePing.value ? blankLinePingSettings.value : undefined,
     },
-    repeat: readInputAsNumber(repeat.value),
-    autoRelogin: autoRelogin.value,
-    restartPlayerEveryGame: restartPlayerEveryGame.value,
-    enableComment: enableComment.value,
-    enableAutoSave: enableAutoSave.value,
-    autoFlip: autoFlip.value,
+    searchCommentFormat: appSettings.searchCommentFormat,
   };
 };
 
-const onExportYAML = () => {
-  const settings = exportCSAGameSettingsForCLI(buildConfig(), appSettings);
-  if (settings instanceof Error) {
-    useErrorStore().add(settings);
-    return;
+const confirm = (action: () => void) => {
+  if (isFloodgate.value && !validFloodgatePassword.value) {
+    useConfirmationStore().show({
+      message: t.yourPasswordDoesNotMeetFloodgateRequirementsDoYouStillWantToContinue,
+      onOk: action,
+    });
+  } else {
+    action();
   }
-  navigator.clipboard.writeText(YAML.stringify(settings));
-  messageStore.enqueue({
-    text: t.yamlFormatSettingsCopiedToClipboard,
+};
+
+const onExportYAML = () => {
+  confirm(() => {
+    const settings = exportCSAGameSettingsForCLI(buildConfig(), appSettings);
+    if (settings instanceof Error) {
+      useErrorStore().add(settings);
+      return;
+    }
+    navigator.clipboard.writeText(YAML.stringify(settings));
+    messageStore.enqueue({
+      text: t.yamlFormatSettingsCopiedToClipboard,
+    });
   });
 };
 
 const onExportJSON = () => {
-  const settings = exportCSAGameSettingsForCLI(buildConfig(), appSettings);
-  if (settings instanceof Error) {
-    useErrorStore().add(settings);
-    return;
-  }
-  navigator.clipboard.writeText(JSON.stringify(settings, null, 2));
-  messageStore.enqueue({
-    text: t.jsonFormatSettingsCopiedToClipboard,
+  confirm(() => {
+    const settings = exportCSAGameSettingsForCLI(buildConfig(), appSettings);
+    if (settings instanceof Error) {
+      useErrorStore().add(settings);
+      return;
+    }
+    navigator.clipboard.writeText(JSON.stringify(settings, null, 2));
+    messageStore.enqueue({
+      text: t.jsonFormatSettingsCopiedToClipboard,
+    });
   });
 };
 
 const onExportCommand = () => {
-  const settings = exportCSAGameSettingsForCLI(buildConfig(), appSettings);
-  if (settings instanceof Error) {
-    useErrorStore().add(settings);
-    return;
-  }
-  compressCSAGameSettingsForCLI(settings).then((compressed) => {
-    navigator.clipboard.writeText(`npx usi-csa-bridge --base64 ${compressed}`);
-    messageStore.enqueue({
-      text: t.usiCsaBridgeCommandCopiedToClipboard,
+  confirm(() => {
+    const settings = exportCSAGameSettingsForCLI(buildConfig(), appSettings);
+    if (settings instanceof Error) {
+      useErrorStore().add(settings);
+      return;
+    }
+    compressCSAGameSettingsForCLI(settings).then((compressed) => {
+      navigator.clipboard.writeText(`npx usi-csa-bridge --base64 ${compressed}`);
+      messageStore.enqueue({
+        text: t.usiCsaBridgeCommandCopiedToClipboard,
+      });
     });
   });
 };
 
 const onStart = () => {
-  const csaGameSettings = buildConfig();
-  const error = validateCSAGameSettings(csaGameSettings);
-  if (error) {
-    useErrorStore().add(error);
-  } else {
-    store.loginCSAGame(csaGameSettings, {
-      saveHistory: saveHistory.value,
-    });
-  }
+  confirm(() => {
+    const csaGameSettings = buildConfig();
+    const error = validateCSAGameSettings(csaGameSettings);
+    if (error) {
+      useErrorStore().add(error);
+    } else {
+      store.loginCSAGame(csaGameSettings, {
+        saveHistory: saveHistory.value,
+      });
+    }
+  });
 };
 
 const onCancel = () => {
@@ -468,51 +419,55 @@ const onUpdatePlayerSettings = async (val: USIEngines) => {
   engines.value = val;
 };
 
-const onSelectPlayer = (uri: string) => {
-  playerURI.value = uri;
-};
-
-const onTogglePasswordVisibility = (value: boolean) => {
-  password.value.type = value ? "text" : "password";
-};
-
 const onChangeHistory = (event: Event) => {
   const select = event.target as HTMLSelectElement;
   const server = history.value.serverHistory[Number(select.value)];
   if (server) {
-    protocolVersion.value.value = selectedProtocolVersion.value = server.protocolVersion;
-    host.value.value = server.host;
-    port.value.value = server.port;
-    id.value.value = server.id;
-    password.value.value = server.password;
-    keepaliveInitialDelay.value.value = server.tcpKeepalive.initialDelay;
+    csaGameSettings.value.server = { ...server };
     blankLinePing.value = !!server.blankLinePing;
     if (server.blankLinePing) {
-      blankLineInitialDelay.value.value = server.blankLinePing.initialDelay;
-      blankLineInterval.value.value = server.blankLinePing.interval;
+      blankLinePingSettings.value = { ...server.blankLinePing };
     }
   }
 };
 
-const onChangeProtocolVersion = () => {
-  selectedProtocolVersion.value = protocolVersion.value.value;
+const selectAutoSaveDirectory = async () => {
+  busyState.retain();
+  try {
+    const path = await api.showSelectDirectoryDialog(csaGameSettings.value.autoSaveDirectory);
+    if (path) {
+      csaGameSettings.value.autoSaveDirectory = path;
+    }
+  } catch (e) {
+    useErrorStore().add(e);
+  } finally {
+    busyState.release();
+  }
 };
 
 const logEnabled = computed(() => {
   const appSettings = useAppSettings();
   return appSettings.enableCSALog && appSettings.enableAppLog && appSettings.enableUSILog;
 });
+
+const hwaEnabled = computed(() => {
+  const appSettings = useAppSettings();
+  return appSettings.enableHardwareAcceleration;
+});
 </script>
 
 <style scoped>
-.root {
-  width: 560px;
+.form-group {
+  min-width: 510px;
 }
 input.number {
   width: 100px;
 }
 .long-text {
   width: 250px;
+}
+.file-path {
+  width: 180px;
 }
 .main-buttons button {
   line-height: 150%;

@@ -15,37 +15,52 @@ jobs:
         include:
           - os: windows
             os_short: win
+            variant: installer
+          - os: windows
+            os_short: win
+            variant: portable
           - os: macos
             os_short: mac
+            variant: installer
           - os: ubuntu
             os_short: linux
+            variant: installer
     runs-on: ${{ matrix.os }}-latest
     steps:
       - run: git config --global core.autocrlf false
         if: matrix.os == 'windows'
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6.3.0
         with:
           node-version: lts/*
           cache: "npm"
+      - run: npm install -g npm@latest
       - run: npm version
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund --prefer-online
       - run: npm run electron:build
-      - run: node scripts/archive.mjs ${{ matrix.os_short }} ${{ github.ref_name }}
-      - uses: actions/upload-artifact@v4
+        if: matrix.variant != 'portable'
+      - run: npm run electron:portable
+        if: matrix.variant == 'portable'
+      - run: node scripts/archive.mjs ${{ matrix.os_short }} ${{ github.ref_name }} ${{ matrix.variant }}
+      - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.os}}-release
+          name: ${{ matrix.os }}${{ matrix.variant == 'portable' && '-portable' || '' }}-release
           path: dist/release-*.zip
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
-      - uses: softprops/action-gh-release@c062e08bd532815e2082a85e87e3ef29c3e6d191 # v2.0.8
-        with:
-          name: ShogiHome ${{ github.ref_name }}
-          files: dist/release-*.zip
-          draft: true
+      - name: Create GitHub Release
+        run: |
+          gh release create "$TAG_NAME" \
+            --title "ShogiHome $TAG_NAME" \
+            --draft \
+            dist/release-*.zip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}

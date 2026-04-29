@@ -1,5 +1,5 @@
-import * as uri from "@/common/uri";
-import { t } from "@/common/i18n";
+import * as uri from "@/common/uri.js";
+import { t } from "@/common/i18n/index.js";
 
 type UIComponentCommon = {
   left: number;
@@ -12,6 +12,12 @@ export enum BoardLayoutType {
   STANDARD = "standard",
   COMPACT = "compact",
   PORTRAIT = "portrait",
+}
+
+export enum PositionImageFontWeight {
+  W400 = "400",
+  W400X = "400+",
+  W700X = "700+",
 }
 
 type Board = {
@@ -27,6 +33,10 @@ type Record = {
   showElapsedTimeColumn?: boolean;
   topControlBox?: boolean;
   branches?: boolean;
+};
+
+type Book = {
+  type: "Book";
 };
 
 export enum EvaluationChartType {
@@ -50,6 +60,7 @@ type Analytics = {
   showNodesColumn?: boolean;
   showScoreColumn?: boolean;
   showPlayButton?: boolean;
+  showSuggestionsCount?: boolean;
 };
 
 type Comment = {
@@ -69,13 +80,45 @@ type ControlGroup2 = {
   type: "ControlGroup2";
 };
 
+type SimpleBoard = {
+  type: "SimpleBoard";
+  fontWeight?: PositionImageFontWeight;
+  fontScale?: number;
+  characterY?: number; // Deprecated
+  bookmark?: boolean;
+};
+
+type ElapsedTimeChart = {
+  type: "ElapsedTimeChart";
+  showLegend?: boolean;
+};
+
 export type UIComponent = UIComponentCommon &
-  (Board | Record | Chart | Analytics | Comment | RecordInfo | ControlGroup1 | ControlGroup2);
+  (
+    | Board
+    | Record
+    | Book
+    | Chart
+    | Analytics
+    | Comment
+    | RecordInfo
+    | ControlGroup1
+    | ControlGroup2
+    | SimpleBoard
+    | ElapsedTimeChart
+  );
+
+export enum DialogPosition {
+  LEFT = "left",
+  CENTER = "center",
+  RIGHT = "right",
+}
 
 export type LayoutProfile = {
   uri: string;
   name: string;
   backgroundColor?: string;
+  dialogPosition?: DialogPosition;
   dialogBackdrop?: boolean;
   components: UIComponent[];
 };

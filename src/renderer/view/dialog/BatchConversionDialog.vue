@@ -1,202 +1,173 @@
 <template>
-  <div>
-    <dialog ref="dialog" class="root">
-      <div class="title">{{ t.batchConversion }}</div>
-      <div class="form-group scroll">
-        <div>{{ t.inputs }}</div>
-        <div class="form-item row">
-          <input ref="source" class="grow" type="text" />
-          <button class="thin" @click="selectDirectory(source)">
-            {{ t.select }}
-          </button>
-          <button class="thin open-dir" @click="openDirectory(source)">
-            <Icon :icon="IconType.OPEN_FOLDER" />
-          </button>
-        </div>
-        <div class="form-item">
-          <div class="form-item-label-wide">{{ t.formats }}</div>
-          <div class="formats">
-            <ToggleButton
-              class="toggle"
-              label=".kif"
-              :value="sourceFormats.kif"
-              @change="
-                (val: boolean) => {
-                  sourceFormats.kif = val;
-                }
-              "
-            />
-            <ToggleButton
-              class="toggle"
-              label=".kifu"
-              :value="sourceFormats.kifu"
-              @change="
-                (val: boolean) => {
-                  sourceFormats.kifu = val;
-                }
-              "
-            />
-            <ToggleButton
-              class="toggle"
-              label=".ki2"
-              :value="sourceFormats.ki2"
-              @change="
-                (val: boolean) => {
-                  sourceFormats.ki2 = val;
-                }
-              "
-            />
-            <ToggleButton
-              class="toggle"
-              label=".ki2u"
-              :value="sourceFormats.ki2u"
-              @change="
-                (val: boolean) => {
-                  sourceFormats.ki2u = val;
-                }
-              "
-            />
-            <ToggleButton
-              class="toggle"
-              label=".csa"
-              :value="sourceFormats.csa"
-              @change="
-                (val: boolean) => {
-                  sourceFormats.csa = val;
-                }
-              "
-            />
-            <ToggleButton
-              class="toggle"
-              label=".jkf"
-              :value="sourceFormats.jkf"
-              @change="
-                (val: boolean) => {
-                  sourceFormats.jkf = val;
-                }
-              "
-            />
-          </div>
-        </div>
-        <div class="form-item row">
-          <div class="form-item-label-wide">{{ t.subdirectories }}</div>
-          <ToggleButton
-            class="toggle"
-            :value="subdirectories"
-            @change="
-              (val: boolean) => {
-                subdirectories = val;
-              }
-            "
-          />
-        </div>
-        <hr />
-        <div>{{ t.outputs }}</div>
-        <div class="form-item center">
-          <HorizontalSelector
-            :items="[
-              { label: t.separate, value: DestinationType.DIRECTORY },
-              { label: t.merge, value: DestinationType.SINGLE_FILE },
-            ]"
-            :value="destinationType"
-            @change="
-              (val: string) => {
-                destinationType = val as DestinationType;
-              }
-            "
-          />
-        </div>
-        <div v-show="destinationType !== DestinationType.SINGLE_FILE" class="form-item row">
-          <input ref="destination" class="grow" type="text" />
-          <button class="thin" @click="selectDirectory(destination)">
-            {{ t.select }}
-          </button>
-          <button class="thin open-dir" @click="openDirectory(destination)">
-            <Icon :icon="IconType.OPEN_FOLDER" />
-          </button>
-        </div>
-        <div v-show="destinationType !== DestinationType.SINGLE_FILE" class="form-item row">
-          <div class="form-item-label-wide">{{ t.format }}</div>
-          <div class="formats">
-            <HorizontalSelector
-              :items="[
-                { label: '.kif', value: RecordFileFormat.KIF },
-                { label: '.kifu', value: RecordFileFormat.KIFU },
-                { label: '.ki2', value: RecordFileFormat.KI2 },
-                { label: '.ki2u', value: RecordFileFormat.KI2U },
-                { label: '.csa', value: RecordFileFormat.CSA },
-                { label: '.jkf', value: RecordFileFormat.JKF },
-              ]"
-              :value="destinationFormat"
-              @change="
-                (val: string) => {
-                  destinationFormat = val as RecordFileFormat;
-                }
-              "
-            />
-          </div>
-        </div>
-        <div v-show="destinationType !== DestinationType.SINGLE_FILE" class="form-item row">
-          <div class="form-item-label-wide">{{ t.createSubdirectories }}</div>
-          <ToggleButton
-            class="toggle"
-            :value="createSubdirectories"
-            @change="
-              (val: boolean) => {
-                createSubdirectories = val;
-              }
-            "
-          />
-        </div>
-        <div v-show="destinationType !== DestinationType.SINGLE_FILE" class="form-item row">
-          <div class="form-item-label-wide">{{ t.nameConflictAction }}</div>
-          <HorizontalSelector
-            :items="[
-              { label: t.overwrite, value: FileNameConflictAction.OVERWRITE },
-              {
-                label: t.numberSuffix,
-                value: FileNameConflictAction.NUMBER_SUFFIX,
-              },
-              { label: t.skip, value: FileNameConflictAction.SKIP },
-            ]"
-            :value="fileNameConflictAction"
-            @change="
-              (val: string) => {
-                fileNameConflictAction = val as FileNameConflictAction;
-              }
-            "
-          />
-        </div>
-        <div v-show="destinationType === DestinationType.SINGLE_FILE" class="form-item row">
-          <input ref="singleFileDestination" class="grow" type="text" />
-          <button class="thin" @click="selectDestinationFile(singleFileDestination)">
-            {{ t.select }}
-          </button>
-          <button class="thin open-dir" @click="openDirectory(singleFileDestination)">
-            <Icon :icon="IconType.OPEN_FOLDER" />
-          </button>
+  <DialogFrame @cancel="onClose">
+    <div class="title">{{ t.batchConversion }}</div>
+    <div class="form-group">
+      <div>{{ t.inputs }}</div>
+      <div class="form-item center">
+        <HorizontalSelector
+          v-model:value="settings.sourceType"
+          :items="[
+            { label: t.folder, value: SourceType.DIRECTORY },
+            { label: '.sfen', value: SourceType.SINGLE_FILE },
+          ]"
+        />
+      </div>
+      <div v-show="settings.sourceType === SourceType.DIRECTORY" class="form-item row">
+        <input v-model="settings.source" class="grow" type="text" />
+        <button class="thin" @click="selectSourceDirectory">
+          {{ t.select }}
+        </button>
+        <button class="thin open-dir" @click="openDirectory(settings.source)">
+          <Icon :icon="IconType.OPEN_FOLDER" />
+        </button>
+      </div>
+      <div v-show="settings.sourceType === SourceType.DIRECTORY" class="form-item">
+        <div class="form-item-label-wide">{{ t.formats }}</div>
+        <div class="formats">
+          <ToggleButton v-model:value="sourceFormats.kif" class="toggle" label=".kif" />
+          <ToggleButton v-model:value="sourceFormats.kifu" class="toggle" label=".kifu" />
+          <ToggleButton v-model:value="sourceFormats.ki2" class="toggle" label=".ki2" />
+          <ToggleButton v-model:value="sourceFormats.ki2u" class="toggle" label=".ki2u" />
+          <ToggleButton v-model:value="sourceFormats.csa" class="toggle" label=".csa" />
+          <ToggleButton v-model:value="sourceFormats.jkf" class="toggle" label=".jkf" />
         </div>
       </div>
-      <button class="wide" data-hotkey="Enter" @click="convert">
-        {{ t.convert }}
-      </button>
-      <button
-        v-if="appSettings.enableAppLog && appSettings.logLevel === LogLevel.DEBUG"
-        class="wide"
-        @click="openLogFile"
+      <div v-show="settings.sourceType === SourceType.DIRECTORY" class="form-item row">
+        <div class="form-item-label-wide">{{ t.subdirectories }}</div>
+        <ToggleButton v-model:value="settings.subdirectories" class="toggle" />
+      </div>
+      <div v-show="settings.sourceType === SourceType.SINGLE_FILE" class="form-item row">
+        <input v-model="settings.singleFileSource" class="grow" type="text" />
+        <button class="thin" @click="selectSourceFile">
+          {{ t.select }}
+        </button>
+        <button class="thin open-dir" @click="openDirectory(settings.singleFileSource)">
+          <Icon :icon="IconType.OPEN_FOLDER" />
+        </button>
+      </div>
+      <hr />
+      <div>{{ t.outputs }}</div>
+      <div v-show="settings.sourceType === SourceType.DIRECTORY" class="form-item center">
+        <HorizontalSelector
+          v-model:value="settings.destinationType"
+          :items="[
+            { label: t.separate, value: DestinationType.DIRECTORY },
+            { label: t.merge, value: DestinationType.SINGLE_FILE },
+          ]"
+        />
+      </div>
+      <div
+        v-show="
+          settings.sourceType === SourceType.SINGLE_FILE ||
+          settings.destinationType === DestinationType.DIRECTORY
+        "
+        class="form-item row"
       >
-        {{ t.openLogFile }}
-      </button>
-      <div v-else class="form-group warning">
-        <div class="note">
-          {{ t.forExportingConversionLogPleaseEnableAppLogsAndSetLogLevelDebugAndRestart }}
+        <input v-model="settings.destination" class="grow" type="text" />
+        <button class="thin" @click="selectDestinationDirectory">
+          {{ t.select }}
+        </button>
+        <button class="thin open-dir" @click="openDirectory(settings.destination)">
+          <Icon :icon="IconType.OPEN_FOLDER" />
+        </button>
+      </div>
+      <div
+        v-show="
+          settings.sourceType === SourceType.SINGLE_FILE ||
+          settings.destinationType === DestinationType.DIRECTORY
+        "
+        class="form-item row"
+      >
+        <div class="form-item-label-wide">{{ t.format }}</div>
+        <div class="formats">
+          <HorizontalSelector
+            v-model:value="settings.destinationFormat"
+            :items="[
+              { label: '.kif', value: RecordFileFormat.KIF },
+              { label: '.kifu', value: RecordFileFormat.KIFU },
+              { label: '.ki2', value: RecordFileFormat.KI2 },
+              { label: '.ki2u', value: RecordFileFormat.KI2U },
+              { label: '.csa', value: RecordFileFormat.CSA },
+              { label: '.jkf', value: RecordFileFormat.JKF },
+            ]"
+          />
         </div>
       </div>
-      <div class="main-buttons">
-        <button data-hotkey="Escape" @click="onClose">{{ t.close }}</button>
+      <div
+        v-show="
+          settings.sourceType === SourceType.DIRECTORY &&
+          settings.destinationType === DestinationType.DIRECTORY
+        "
+        class="form-item row"
+      >
+        <div class="form-item-label-wide">{{ t.createSubdirectories }}</div>
+        <ToggleButton v-model:value="settings.createSubdirectories" class="toggle" />
       </div>
-    </dialog>
-  </div>
+      <div
+        v-show="
+          settings.sourceType === SourceType.DIRECTORY &&
+          settings.destinationType === DestinationType.DIRECTORY
+        "
+        class="form-item row"
+      >
+        <div class="form-item-label-wide">{{ t.nameConflictAction }}</div>
+        <HorizontalSelector
+          v-model:value="settings.fileNameConflictAction"
+          :items="[
+            { label: t.overwrite, value: FileNameConflictAction.OVERWRITE },
+            {
+              label: t.numberSuffix,
+              value: FileNameConflictAction.NUMBER_SUFFIX,
+            },
+            { label: t.skip, value: FileNameConflictAction.SKIP },
+          ]"
+        />
+      </div>
+      <div
+        v-show="
+          settings.sourceType === SourceType.DIRECTORY &&
+          settings.destinationType === DestinationType.SINGLE_FILE
+        "
+        class="form-item row"
+      >
+        <input v-model="settings.singleFileDestination" class="grow" type="text" />
+        <button class="thin" @click="selectDestinationFile">
+          {{ t.select }}
+        </button>
+        <button class="thin open-dir" @click="openDirectory(settings.singleFileDestination)">
+          <Icon :icon="IconType.OPEN_FOLDER" />
+        </button>
+      </div>
+      <div
+        v-show="
+          settings.sourceType === SourceType.DIRECTORY &&
+          settings.destinationType === DestinationType.SINGLE_FILE
+        "
+        class="form-item row"
+      >
+        <div class="form-item-label-wide">resign</div>
+        <ToggleButton v-model:value="settings.enableUSIResign" class="toggle" />
+      </div>
+    </div>
+    <button class="wide" data-hotkey="Enter" @click="convert">
+      {{ t.convert }}
+    </button>
+    <button
+      v-if="appSettings.enableAppLog && appSettings.logLevel === LogLevel.DEBUG"
+      class="wide"
+      @click="openLogFile"
+    >
+      {{ t.openLogFile }}
+    </button>
+    <div v-else class="form-group warning">
+      <div class="note">
+        {{ t.forExportingConversionLogPleaseEnableAppLogsAndSetLogLevelDebugAndRestart }}
+      </div>
+    </div>
+    <div class="main-buttons">
+      <button data-hotkey="Escape" @click="onClose">{{ t.close }}</button>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
@@ -206,12 +177,12 @@ import {
   validateBatchConversionSettings,
   DestinationType,
   FileNameConflictAction,
+  defaultBatchConversionSettings,
+  SourceType,
 } from "@/common/settings/conversion";
-import { showModalDialog } from "@/renderer/helpers/dialog";
 import api from "@/renderer/ipc/api";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
 import { useStore } from "@/renderer/store";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onMounted, ref } from "vue";
 import ToggleButton from "@/renderer/view/primitive/ToggleButton.vue";
 import HorizontalSelector from "@/renderer/view/primitive/HorizontalSelector.vue";
 import { t } from "@/common/i18n";
@@ -222,12 +193,12 @@ import { LogType, LogLevel } from "@/common/log";
 import { useErrorStore } from "@/renderer/store/error";
 import { useBusyState } from "@/renderer/store/busy";
 import { useMessageStore } from "@/renderer/store/message";
+import DialogFrame from "./DialogFrame.vue";
 
 const store = useStore();
 const busyState = useBusyState();
 const appSettings = useAppSettings();
-const dialog = ref();
-const source = ref();
+const settings = ref(defaultBatchConversionSettings());
 const sourceFormats = ref({
   kif: false,
   kifu: false,
@@ -236,37 +207,21 @@ const sourceFormats = ref({
   csa: false,
   jkf: false,
 });
-const subdirectories = ref(false);
-const destinationType = ref(DestinationType.DIRECTORY);
-const destination = ref();
-const destinationFormat = ref(RecordFileFormat.KIF);
-const createSubdirectories = ref(false);
-const fileNameConflictAction = ref(FileNameConflictAction.OVERWRITE);
-const singleFileDestination = ref();
 
 busyState.retain();
 
 onMounted(async () => {
   try {
-    const batchConversionSettings = await api.loadBatchConversionSettings();
-    showModalDialog(dialog.value, onClose);
-    installHotKeyForDialog(dialog.value);
-    source.value.value = batchConversionSettings.source;
+    settings.value = await api.loadBatchConversionSettings();
+    const sf = settings.value.sourceFormats;
     sourceFormats.value = {
-      kif: batchConversionSettings.sourceFormats.includes(RecordFileFormat.KIF),
-      kifu: batchConversionSettings.sourceFormats.includes(RecordFileFormat.KIFU),
-      ki2: batchConversionSettings.sourceFormats.includes(RecordFileFormat.KI2),
-      ki2u: batchConversionSettings.sourceFormats.includes(RecordFileFormat.KI2U),
-      csa: batchConversionSettings.sourceFormats.includes(RecordFileFormat.CSA),
-      jkf: batchConversionSettings.sourceFormats.includes(RecordFileFormat.JKF),
+      kif: sf.includes(RecordFileFormat.KIF),
+      kifu: sf.includes(RecordFileFormat.KIFU),
+      ki2: sf.includes(RecordFileFormat.KI2),
+      ki2u: sf.includes(RecordFileFormat.KI2U),
+      csa: sf.includes(RecordFileFormat.CSA),
+      jkf: sf.includes(RecordFileFormat.JKF),
     };
-    subdirectories.value = batchConversionSettings.subdirectories;
-    destinationType.value = batchConversionSettings.destinationType;
-    destination.value.value = batchConversionSettings.destination;
-    destinationFormat.value = batchConversionSettings.destinationFormat;
-    createSubdirectories.value = batchConversionSettings.createSubdirectories;
-    fileNameConflictAction.value = batchConversionSettings.fileNameConflictAction;
-    singleFileDestination.value.value = batchConversionSettings.singleFileDestination;
   } catch (e) {
     useErrorStore().add(e);
     store.destroyModalDialog();
@@ -275,16 +230,12 @@ onMounted(async () => {
   }
 });
 
-onBeforeUnmount(() => {
-  uninstallHotKeyForDialog(dialog.value);
-});
-
-const selectDirectory = async (elem: HTMLInputElement) => {
+const selectSourceDirectory = async () => {
   busyState.retain();
   try {
-    const path = await api.showSelectDirectoryDialog(elem.value);
+    const path = await api.showSelectDirectoryDialog(settings.value.source);
     if (path) {
-      elem.value = path;
+      settings.value.source = path;
     }
   } catch (e) {
     useErrorStore().add(e);
@@ -293,12 +244,12 @@ const selectDirectory = async (elem: HTMLInputElement) => {
   }
 };
 
-const selectDestinationFile = async (elem: HTMLInputElement) => {
+const selectSourceFile = async () => {
   busyState.retain();
   try {
-    const path = await api.showSaveMergedRecordDialog(elem.value);
+    const path = await api.showSelectSFENDialog(settings.value.singleFileSource);
     if (path) {
-      elem.value = path;
+      settings.value.singleFileSource = path;
     }
   } catch (e) {
     useErrorStore().add(e);
@@ -307,13 +258,41 @@ const selectDestinationFile = async (elem: HTMLInputElement) => {
   }
 };
 
-const openDirectory = (elem: HTMLInputElement) => {
-  api.openExplorer(elem.value);
+const selectDestinationDirectory = async () => {
+  busyState.retain();
+  try {
+    const path = await api.showSelectDirectoryDialog(settings.value.destination);
+    if (path) {
+      settings.value.destination = path;
+    }
+  } catch (e) {
+    useErrorStore().add(e);
+  } finally {
+    busyState.release();
+  }
+};
+
+const selectDestinationFile = async () => {
+  busyState.retain();
+  try {
+    const path = await api.showSaveMergedRecordDialog(settings.value.singleFileDestination);
+    if (path) {
+      settings.value.singleFileDestination = path;
+    }
+  } catch (e) {
+    useErrorStore().add(e);
+  } finally {
+    busyState.release();
+  }
+};
+
+const openDirectory = (path: string) => {
+  api.openExplorer(path);
 };
 
 const convert = async () => {
   const batchConversionSettings: BatchConversionSettings = {
-    source: source.value.value,
+    ...settings.value,
     sourceFormats: Object.entries({
       [RecordFileFormat.KIF]: sourceFormats.value.kif,
       [RecordFileFormat.KIFU]: sourceFormats.value.kifu,
@@ -324,13 +303,6 @@ const convert = async () => {
     })
       .filter(([, value]) => value)
       .map(([key]) => key as RecordFileFormat),
-    subdirectories: subdirectories.value,
-    destinationType: destinationType.value,
-    destination: destination.value.value,
-    destinationFormat: destinationFormat.value,
-    createSubdirectories: createSubdirectories.value,
-    fileNameConflictAction: fileNameConflictAction.value,
-    singleFileDestination: singleFileDestination.value.value,
   };
   const error = validateBatchConversionSettings(batchConversionSettings);
   if (error) {
@@ -377,6 +349,7 @@ const convert = async () => {
           ],
         },
       ],
+      withCopyButton: true,
     });
   } catch (e) {
     useErrorStore().add(e);
@@ -395,8 +368,8 @@ const onClose = () => {
 </script>
 
 <style scoped>
-.root {
-  width: 540px;
+.form-group {
+  width: 520px;
 }
 .formats {
   display: inline-block;

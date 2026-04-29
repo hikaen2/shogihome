@@ -7,14 +7,15 @@ import {
   reverseColor,
   Square,
 } from "tsshogi";
-import { Config } from "./config";
-import { PieceStandImageType } from "@/common/settings/app";
-import { commonParams, compactHandParams, handParams, portraitHandParams } from "./params";
-import { Hand, HandNumber, HandPiece, HandPointer } from "./layout";
-import { Point } from "@/common/assets/geometry";
+import { Config } from "./config.js";
+import { PieceStandImageType } from "@/common/settings/app.js";
+import { commonParams, compactHandParams, handParams, portraitHandParams } from "./params.js";
+import { Hand, HandNumber, HandPiece, HandPointer } from "./layout.js";
+import { Point } from "@/common/assets/geometry.js";
 
 const pieceStandBackgroundColorMap = {
   [PieceStandImageType.STANDARD]: "#8b4513",
+  [PieceStandImageType.DARK_WOOD]: "rgba(0, 0, 0, 0)",
   [PieceStandImageType.GREEN]: "#527a52",
   [PieceStandImageType.CHERRY_BLOSSOM]: "#e8a9a9",
   [PieceStandImageType.AUTUMN]: "#792509",
@@ -38,7 +39,12 @@ export class HandLayoutBuilder {
     return new Point(x, y).multiply(this.ratio);
   }
 
-  build(hand: ImmutableHand, color: Color, pointer?: Square | Piece | null): Hand {
+  build(
+    hand: ImmutableHand,
+    color: Color,
+    pointer?: Square | Piece | null,
+    dragSourceType?: PieceType,
+  ): Hand {
     const displayColor = this.config.flip ? reverseColor(color) : color;
     const bgColor = pieceStandBackgroundColorMap[this.config.pieceStandImageType];
     const standWidth = handParams.width * this.ratio;
@@ -83,6 +89,7 @@ export class HandLayoutBuilder {
             top: y + "px",
             width: pieceWidth + "px",
             height: pieceHeight + "px",
+            opacity: i === 0 && type === dragSourceType ? "0.3" : "1",
           },
         });
       }
@@ -141,7 +148,12 @@ export class CompactHandLayoutBuilder {
     return new Point(0, 0);
   }
 
-  build(hand: ImmutableHand, color: Color, pointer?: Square | Piece | null): Hand {
+  build(
+    hand: ImmutableHand,
+    color: Color,
+    pointer?: Square | Piece | null,
+    dragSourceType?: PieceType,
+  ): Hand {
     const displayColor = this.config.flip ? reverseColor(color) : color;
     const bgColor = pieceStandBackgroundColorMap[this.config.pieceStandImageType];
     const standWidth = compactHandParams.width * this.ratio;
@@ -181,6 +193,7 @@ export class CompactHandLayoutBuilder {
           top: top + compactHandParams.topPiecePadding * this.ratio + "px",
           width: commonParams.piece.width * this.ratio + "px",
           height: commonParams.piece.height * this.ratio + "px",
+          opacity: type === dragSourceType ? "0.3" : "1",
         },
       });
       if (hand.count(type) > 1) {
@@ -255,7 +268,12 @@ export class PortraitHandLayoutBuilder {
     return new Point(0, 0);
   }
 
-  build(hand: ImmutableHand, color: Color, pointer?: Square | Piece | null): Hand {
+  build(
+    hand: ImmutableHand,
+    color: Color,
+    pointer?: Square | Piece | null,
+    dragSourceType?: PieceType,
+  ): Hand {
     const displayColor = this.config.flip ? reverseColor(color) : color;
     const bgColor = pieceStandBackgroundColorMap[this.config.pieceStandImageType];
     const standWidth = portraitHandParams.width * this.ratio;
@@ -294,6 +312,7 @@ export class PortraitHandLayoutBuilder {
           top: portraitHandParams.topPiecePadding * this.ratio + "px",
           width: commonParams.piece.width * this.ratio + "px",
           height: commonParams.piece.height * this.ratio + "px",
+          opacity: type === dragSourceType ? "0.3" : "1",
         },
       });
       if (hand.count(type) > 1) {

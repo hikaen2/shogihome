@@ -1,21 +1,23 @@
 /* eslint-disable no-console */
-import { defaultAnalysisSettings } from "@/common/settings/analysis";
-import { defaultAppSettings } from "@/common/settings/app";
-import { defaultGameSettings } from "@/common/settings/game";
-import { defaultResearchSettings } from "@/common/settings/research";
-import { USIEngines } from "@/common/settings/usi";
-import { LogLevel } from "@/common/log";
-import { Bridge } from "@/renderer/ipc/bridge";
-import { t } from "@/common/i18n";
-import { defaultCSAGameSettingsHistory } from "@/common/settings/csa";
-import { defaultMateSearchSettings } from "@/common/settings/mate";
-import { defaultBatchConversionSettings } from "@/common/settings/conversion";
-import { getEmptyHistory } from "@/common/file/history";
-import { VersionStatus } from "@/background/version/types";
-import { SessionStates } from "@/common/advanced/monitor";
-import { emptyLayoutProfileList } from "@/common/settings/layout";
-import * as uri from "@/common/uri";
-import { basename } from "@/renderer/helpers/path";
+import { defaultAnalysisSettings } from "@/common/settings/analysis.js";
+import { defaultAppSettings } from "@/common/settings/app.js";
+import { defaultGameSettings } from "@/common/settings/game.js";
+import { defaultResearchSettings } from "@/common/settings/research.js";
+import { USIEngines } from "@/common/settings/usi.js";
+import { LogLevel } from "@/common/log.js";
+import { Bridge } from "@/renderer/ipc/bridge.js";
+import { t } from "@/common/i18n/index.js";
+import { defaultCSAGameSettingsHistory } from "@/common/settings/csa.js";
+import { defaultMateSearchSettings } from "@/common/settings/mate.js";
+import { defaultBatchConversionSettings } from "@/common/settings/conversion.js";
+import { getEmptyHistory } from "@/common/file/history.js";
+import { VersionStatus } from "@/common/version.js";
+import { blankOSState, SessionStates, MachineSpec } from "@/common/advanced/monitor.js";
+import { emptyLayoutProfileList } from "@/common/settings/layout.js";
+import * as uri from "@/common/uri.js";
+import { basename } from "@/renderer/helpers/path.js";
+import { ProcessArgs } from "@/common/ipc/process";
+import { BookFormat } from "@/common/book.js";
 
 enum STORAGE_KEY {
   APP_SETTINGS = "appSetting",
@@ -35,6 +37,9 @@ export const webAPI: Bridge = {
   updateAppState(): void {
     // DO NOTHING
   },
+  async fetchProcessArgs(): Promise<string> {
+    return JSON.stringify({} as ProcessArgs);
+  },
   onClosable(): void {
     // Do Nothing
   },
@@ -42,6 +47,9 @@ export const webAPI: Bridge = {
     // Do Nothing
   },
   onSendError(): void {
+    // Do Nothing
+  },
+  onSendMessage(): void {
     // Do Nothing
   },
   onMenuEvent(): void {
@@ -104,7 +112,10 @@ export const webAPI: Bridge = {
   async loadGameSettings(): Promise<string> {
     const json = localStorage.getItem(STORAGE_KEY.GAME_SETTINGS);
     if (!json) {
-      return JSON.stringify(defaultGameSettings());
+      return JSON.stringify({
+        ...defaultGameSettings(),
+        enableAutoSave: false,
+      });
     }
     return JSON.stringify({
       ...defaultGameSettings(),
@@ -146,18 +157,21 @@ export const webAPI: Bridge = {
   async saveUSIEngines(): Promise<void> {
     // Do Nothing
   },
+  async loadBookImportSettings(): Promise<string> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async saveBookImportSettings(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
   onUpdateAppSettings(): void {
     // Do Nothing
   },
 
   // Record File
-  async fetchInitialRecordFileRequest(): Promise<string> {
-    return "null";
-  },
-  async showOpenRecordDialog(): Promise<string> {
+  async showOpenRecordDialog(formats: string[]): Promise<string> {
     const input = document.createElement("input");
     input.setAttribute("type", "file");
-    input.setAttribute("accept", ".kif,.ki2,.kifu,.ki2u,.csa,.jkf");
+    input.setAttribute("accept", formats.join(","));
     return new Promise<string>((resolve, reject) => {
       input.click();
       input.onchange = () => {
@@ -197,7 +211,7 @@ export const webAPI: Bridge = {
     return Promise.reject(new Error("invalid URI"));
   },
   async saveRecord(path: string, data: Uint8Array): Promise<void> {
-    const blob = new Blob([data], { type: "application/octet-stream" });
+    const blob = new Blob([new Uint8Array(data)], { type: "application/octet-stream" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -220,14 +234,64 @@ export const webAPI: Bridge = {
   async loadRecordFileBackup(): Promise<string> {
     throw new Error(t.thisFeatureNotAvailableOnWebApp);
   },
-  async loadRemoteRecordFile(): Promise<string> {
+  async loadRemoteTextFile(): Promise<string> {
     throw new Error(t.thisFeatureNotAvailableOnWebApp);
   },
   async convertRecordFiles(): Promise<string> {
     throw new Error(t.thisFeatureNotAvailableOnWebApp);
   },
+  async showSelectSFENDialog(): Promise<string> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async loadSFENFile(): Promise<string[]> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
   onOpenRecord(): void {
     // Do Nothing
+  },
+
+  // Book
+  async showOpenBookDialog(): Promise<string> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async showSaveBookDialog(): Promise<string> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async clearBook(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async openBook(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async openBookAsNewSession(): Promise<number> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async closeBookSession(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async saveBook(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async exportBook(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async getBookFormat(): Promise<BookFormat> {
+    return "yane2016";
+  },
+  async searchBookMoves(): Promise<string> {
+    return "[]";
+  },
+  async updateBookMove(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async removeBookMove(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async updateBookMoveOrder(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async importBookMoves(): Promise<string> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
   },
 
   // USI
@@ -237,13 +301,19 @@ export const webAPI: Bridge = {
   async getUSIEngineInfo(): Promise<string> {
     throw new Error(t.thisFeatureNotAvailableOnWebApp);
   },
-  async sendUSISetOption(): Promise<void> {
+  async getUSIEngineMetadata(): Promise<string> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  async sendUSIOptionButtonSignal(): Promise<void> {
     // Do Nothing
   },
   async usiLaunch(): Promise<number> {
     throw new Error(t.thisFeatureNotAvailableOnWebApp);
   },
   async usiReady(): Promise<void> {
+    // Do Nothing
+  },
+  async usiSetOption(): Promise<void> {
     // Do Nothing
   },
   async usiGo(): Promise<void> {
@@ -286,9 +356,6 @@ export const webAPI: Bridge = {
     // Do Nothing
   },
   onUSIInfo(): void {
-    // Do Nothing
-  },
-  onUSIPonderInfo(): void {
     // Do Nothing
   },
 
@@ -336,6 +403,7 @@ export const webAPI: Bridge = {
   // Sessions
   async collectSessionStates(): Promise<string> {
     return JSON.stringify({
+      os: blankOSState(),
       usiSessions: [],
       csaSessions: [],
     } as SessionStates);
@@ -374,8 +442,11 @@ export const webAPI: Bridge = {
   updateLayoutProfileList(): void {
     // Do Nothing
   },
-  onUpdateLayoutProfileList(): void {
+  onUpdateLayoutProfile(): void {
     // Do Nothing
+  },
+  createDesktopShortcutForLayoutProfile(): Promise<void> {
+    throw new Error(t.thisFeatureNotAvailableOnWebApp);
   },
 
   // Log
@@ -412,6 +483,10 @@ export const webAPI: Bridge = {
   openWebBrowser(url: string) {
     window.open(url, "_blank");
   },
+  async getMachineSpec(): Promise<string> {
+    const spec: MachineSpec = { cpuCores: 1, memory: 1024 ** 2 };
+    return JSON.stringify(spec);
+  },
   async isEncryptionAvailable(): Promise<boolean> {
     return false;
   },
@@ -420,5 +495,11 @@ export const webAPI: Bridge = {
   },
   sendTestNotification(): void {
     throw new Error(t.thisFeatureNotAvailableOnWebApp);
+  },
+  getPathForFile(file: File): string {
+    return file.name;
+  },
+  onProgress(): void {
+    // Do Nothing
   },
 };

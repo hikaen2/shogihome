@@ -1,4 +1,3 @@
-import path from "node:path";
 import { app, BrowserWindow } from "electron";
 import {
   getAppState,
@@ -7,18 +6,19 @@ import {
   openRecord,
   sendError,
   setupIPC,
-} from "@/background/window/ipc";
-import { loadWindowSettings, saveWindowSettings } from "@/background/settings";
-import { buildWindowSettings } from "@/common/settings/window";
-import { getAppLogger } from "@/background/log";
-import { AppState } from "@/common/control/state";
-import { getPreloadPath, isDevelopment, isPreview, isTest } from "@/background/proc/env";
-import { checkUpdates } from "@/background/version/check";
-import { setupMenu } from "@/background/window/menu";
-import { t } from "@/common/i18n";
-import { ghioDomain } from "@/common/links/github";
+} from "@/background/window/ipc.js";
+import { loadWindowSettings, saveWindowSettings } from "@/background/settings.js";
+import { buildWindowSettings } from "@/common/settings/window.js";
+import { getAppLogger } from "@/background/log.js";
+import { AppState } from "@/common/control/state.js";
+import { getPreloadPath, isDevelopment, isTest } from "@/background/proc/env.js";
+import { checkUpdates } from "@/background/version.js";
+import { setupMenu } from "@/background/window/menu.js";
+import { t } from "@/common/i18n/index.js";
+import { ghioDomain } from "@/common/links/github.js";
+import { startHeapMonitor } from "@/background/window/heap_monitor.js";
 
-export function createWindow() {
+export function createWindow(onClosed: () => void) {
   let settings = loadWindowSettings();
 
   getAppLogger().info("create BrowserWindow");
@@ -27,16 +27,15 @@ export function createWindow() {
   const win = new BrowserWindow({
     width: settings.width,
     height: settings.height,
+    fullscreenable: true,
     fullscreen: settings.fullscreen,
     webPreferences: {
-      preload: path.join(__dirname, getPreloadPath()),
-      // on development, disable webSecurity to allow mix of "file://" and "http://localhost:5173"
-      webSecurity: !isDevelopment(),
+      preload: getPreloadPath(),
       // 対局や棋譜解析の用途では処理の遅延が致命的なのでスロットリングを無効にする。
       backgroundThrottling: false,
     },
+    backgroundColor: "#888",
   });
-  win.setBackgroundColor("#888");
   if (settings.maximized) {
     win.maximize();
   }
@@ -56,6 +55,7 @@ export function createWindow() {
     }
     settings = buildWindowSettings(settings, win);
     saveWindowSettings(settings);
+    onClosed();
   });
 
   setupIPC(win);
@@ -75,23 +75,19 @@ export function createWindow() {
         getAppLogger().error(`failed to load dev server URL: ${e}`);
         throw e;
       });
-  } else if (isPreview()) {
-    // Preview
-    getAppLogger().info("load app URL");
-    win.loadFile(path.join(__dirname, "../../../index.html")).catch((e) => {
-      getAppLogger().error(`failed to load app URL: ${e}`);
-      throw e;
-    });
   } else {
-    // Production
+    // Preview or Production
     getAppLogger().info("load app URL");
-    win.loadFile(path.join(__dirname, "../index.html")).catch((e) => {
+    win.loadURL("app://bundle/index.html").catch((e) => {
       getAppLogger().error(`failed to load app URL: ${e}`);
       throw e;
     });
   }
 
   win.once("ready-to-show", () => {
+    const stopHeapMonitor = startHeapMonitor((message) => sendError(new Error(message)));
+    win.once("closed", stopHeapMonitor);
+
     // レンダラー側の準備ができたら uncaughtException はレンダラーへ送る。
     process.on("uncaughtException", (e, origin) => {
       // ホストの解決ができない場合に uncaughtException が発生する。
@@ -102,7 +98,6 @@ export function createWindow() {
       }
       sendError(new Error(`${origin} ${e}`));
     });
-    win.show();
 
     // macOS では起動後に Finder からファイルを開こうとすると既に存在するプロセスに対して open-file イベントが発生する。
     app.on("open-file", (event, path) => {

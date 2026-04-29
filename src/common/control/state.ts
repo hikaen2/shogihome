@@ -6,6 +6,7 @@ export enum AppState {
   EXPORT_POSITION_IMAGE_DIALOG = "exportBoardImageDialog",
   GAME_DIALOG = "gameDialog",
   GAME = "game",
+  PARALLEL_GAME = "parallelGame",
   CSA_GAME_DIALOG = "csaGameDialog",
   CSA_GAME = "csaGame",
   ANALYSIS = "analysis",
@@ -19,6 +20,10 @@ export enum AppState {
   CONNECT_TO_CSA_SERVER_DIALOG = "connectToCsaServerDialog",
   LOAD_REMOTE_FILE_DIALOG = "loadRemoteFileDialog",
   SHARE_DIALOG = "shareDialog",
+  ADD_BOOK_MOVES_DIALOG = "addBookMovesDialog",
+  RESET_BOOK_DIALOG = "resetBookDialog",
+  SEARCH_DUPLICATE_POSITIONS_DIALOG = "searchDuplicatePositionsDialog",
+  ELAPSED_TIME_CHART_DIALOG = "elapsedTimeChartDialog",
 }
 
 export enum ResearchState {

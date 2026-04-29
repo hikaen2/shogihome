@@ -1,24 +1,24 @@
 <template>
-  <div>
-    <dialog ref="dialog" class="root">
+  <DialogFrame @cancel="cancel">
+    <div class="root">
       <div class="title">{{ t.changePieceSet }}</div>
       <div class="form-group">
         <div class="list row wrap">
           <div v-for="pieceType of pieceTypes" :key="pieceType">
             <span class="piece-name">{{ standardPieceName(pieceType) }}</span>
             <input
-              :ref="(el) => (inputs[pieceType] = el as HTMLInputElement)"
+              v-model.number="counts[pieceType]"
               class="number"
               type="number"
               min="0"
               max="18"
-              :value="
-                counts[pieceType] +
-                (isPromotable(pieceType) ? counts[promotedPieceType(pieceType)] : 0)
-              "
             />
           </div>
         </div>
+        <button class="bulk thin" @click="setStandardCounts">
+          {{ t.setAllPiecesToStandardCounts }}
+        </button>
+        <button class="bulk thin" @click="setAllZero">{{ t.setAllPiecesToZero }}</button>
       </div>
       <div class="main-buttons">
         <button data-hotkey="Enter" autofocus @click="ok()">
@@ -28,17 +28,14 @@
           {{ t.cancel }}
         </button>
       </div>
-    </dialog>
-  </div>
+    </div>
+  </DialogFrame>
 </template>
 
 <script setup lang="ts">
 import { t } from "@/common/i18n";
-import { installHotKeyForDialog, uninstallHotKeyForDialog } from "@/renderer/devices/hotkey";
-import { showModalDialog } from "@/renderer/helpers/dialog";
-import { readInputAsNumber } from "@/renderer/helpers/form";
 import { useStore } from "@/renderer/store";
-import { PieceSet } from "@/renderer/store/record";
+import { PieceSet } from "@/renderer/record/manager";
 import {
   PieceType,
   countExistingPieces,
@@ -46,11 +43,10 @@ import {
   promotedPieceType,
   standardPieceName,
 } from "tsshogi";
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { ref } from "vue";
+import DialogFrame from "./DialogFrame.vue";
 
 const store = useStore();
-const dialog = ref();
-const inputs = ref({} as { [key: string]: HTMLInputElement });
 
 const pieceTypes = [
   PieceType.KING,
@@ -62,23 +58,45 @@ const pieceTypes = [
   PieceType.LANCE,
   PieceType.PAWN,
 ];
-const counts = countExistingPieces(store.record.position);
+const rawCounts = countExistingPieces(store.record.position);
+const counts = ref(
+  Object.fromEntries(
+    pieceTypes.map((pieceType) => [
+      pieceType,
+      rawCounts[pieceType] +
+        (isPromotable(pieceType) ? rawCounts[promotedPieceType(pieceType)] : 0),
+    ]),
+  ),
+);
 
-onMounted(() => {
-  showModalDialog(dialog.value, cancel);
-  installHotKeyForDialog(dialog.value);
-});
+// 平手の駒数
+const standardCounts = {
+  [PieceType.KING]: 2,
+  [PieceType.ROOK]: 2,
+  [PieceType.BISHOP]: 2,
+  [PieceType.GOLD]: 4,
+  [PieceType.SILVER]: 4,
+  [PieceType.KNIGHT]: 4,
+  [PieceType.LANCE]: 4,
+  [PieceType.PAWN]: 18,
+} as Record<PieceType, number>;
 
-onBeforeUnmount(() => {
-  uninstallHotKeyForDialog(dialog.value);
-});
+const setStandardCounts = () => {
+  for (const pieceType of pieceTypes) {
+    counts.value[pieceType] = standardCounts[pieceType];
+  }
+};
+
+const setAllZero = () => {
+  for (const pieceType of pieceTypes) {
+    counts.value[pieceType] = 0;
+  }
+};
 
 const ok = () => {
   const update = Object.fromEntries(
     pieceTypes.map((pieceType) => {
-      const input = inputs.value[pieceType];
-      const count = readInputAsNumber(input);
-      return [pieceType, count];
+      return [pieceType, counts.value[pieceType]];
     }),
   ) as PieceSet;
   store.closePieceSetChangeDialog(update);
@@ -104,5 +122,9 @@ const cancel = () => {
 }
 .number {
   width: 3em;
+}
+button.bulk {
+  width: 100%;
+  margin-top: 0.5em;
 }
 </style>

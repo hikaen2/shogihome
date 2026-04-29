@@ -1,15 +1,16 @@
-import { RecordFileFormat } from "@/common/file/record";
-import { CSAGameSummary } from "@/common/game/csa";
+import { RecordFileFormat } from "@/common/file/record.js";
+import { CSAGameSummary } from "@/common/game/csa.js";
 import {
   CSAGameSettings,
   CSAGameSettingsForCLI,
   CSAGameSettingsHistory,
   CSAProtocolVersion,
   CSAServerSettings as CSAServerSettings,
-} from "@/common/settings/csa";
-import { PlayerSettings } from "@/common/settings/player";
-import { defaultRecordFileNameTemplate } from "@/renderer/helpers/path";
+} from "@/common/settings/csa.js";
+import { PlayerSettings } from "@/common/settings/player.js";
+import { defaultRecordFileNameTemplate } from "@/common/file/path.js";
 import { Color } from "tsshogi";
+import { SearchCommentFormat } from "@/common/settings/comment.js";
 
 export const playerURI = "es://usi-engine/test-engine";
 
@@ -81,9 +82,11 @@ export const csaGameSettings: CSAGameSettings = {
   autoFlip: true,
   enableComment: true,
   enableAutoSave: true,
+  autoSaveDirectory: "",
   repeat: 1,
   autoRelogin: true,
   restartPlayerEveryGame: false,
+  searchCommentFormat: SearchCommentFormat.SHOGIHOME,
 };
 
 export const emptyCSAGameSettingsHistory: CSAGameSettingsHistory = {
@@ -92,6 +95,7 @@ export const emptyCSAGameSettingsHistory: CSAGameSettingsHistory = {
   autoFlip: true,
   enableComment: true,
   enableAutoSave: true,
+  autoSaveDirectory: "",
   repeat: 1,
   autoRelogin: true,
   restartPlayerEveryGame: false,
@@ -112,6 +116,7 @@ export const singleCSAGameSettingsHistory: CSAGameSettingsHistory = {
   autoFlip: true,
   enableComment: true,
   enableAutoSave: true,
+  autoSaveDirectory: "",
   repeat: 1,
   autoRelogin: true,
   restartPlayerEveryGame: false,
@@ -217,4 +222,5 @@ export const csaGameSettingsForCLI: CSAGameSettingsForCLI = {
   repeat: 1,
   autoRelogin: true,
   restartPlayerEveryGame: false,
+  searchCommentFormat: SearchCommentFormat.SHOGIHOME,
 };

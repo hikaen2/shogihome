@@ -8,7 +8,13 @@ import {
   USIEngine,
   USIEngines,
   validateUSIEngine,
-} from "@/common/settings/usi";
+  compareUSIEngineOptions,
+  getUSIEnginePonder,
+  getUSIEngineThreads,
+  getUSIEngineMultiPV,
+  getUSIEngineStochasticPonder,
+} from "@/common/settings/usi.js";
+import { testUSIEngine } from "@/tests/mock/usi.js";
 
 describe("settings/usi", () => {
   it("getUSIEngineOptionCurrentValue", () => {
@@ -73,7 +79,252 @@ describe("settings/usi", () => {
         default: "<empty>",
       }),
     ).toBe("");
-    expect(getUSIEngineOptionCurrentValue(null)).toBeUndefined();
+    expect(getUSIEngineOptionCurrentValue(undefined)).toBeUndefined();
+  });
+
+  it("getUSIEnginePonder", () => {
+    const testCases: { options: { [name: string]: USIEngineOption }; expected: boolean }[] = [
+      {
+        options: {
+          USI_Ponder: {
+            name: "USI_Ponder",
+            type: "check",
+            order: 1,
+            default: "true",
+            value: "false",
+          },
+        },
+        expected: false,
+      },
+      {
+        options: {
+          USI_Ponder: {
+            name: "USI_Ponder",
+            type: "check",
+            order: 1,
+            default: "false",
+            value: "true",
+          },
+        },
+        expected: true,
+      },
+      {
+        options: {
+          USI_Ponder: {
+            name: "USI_Ponder",
+            type: "check",
+            order: 1,
+            default: "true",
+          },
+        },
+        expected: true,
+      },
+      {
+        options: {
+          Foo: {
+            name: "Foo",
+            type: "check",
+            order: 1,
+            default: "true",
+            value: "false",
+          },
+        },
+        expected: false,
+      },
+    ];
+    for (const testCase of testCases) {
+      const engine: USIEngine = {
+        uri: "dummy",
+        options: testCase.options,
+      } as USIEngine;
+      expect(getUSIEnginePonder(engine)).toBe(testCase.expected);
+    }
+  });
+
+  it("getUSIEngineThreads", () => {
+    const testCases: {
+      options: { [name: string]: USIEngineOption };
+      expected: number | undefined;
+    }[] = [
+      {
+        options: {
+          Threads: {
+            name: "Threads",
+            type: "spin",
+            order: 1,
+            default: 4,
+            value: 2,
+          },
+        },
+        expected: 2,
+      },
+      {
+        options: {
+          Threads: {
+            name: "Threads",
+            type: "spin",
+            order: 1,
+            default: 4,
+          },
+        },
+        expected: 4,
+      },
+      {
+        options: {
+          NumberOfThreads: {
+            name: "NumberOfThreads",
+            type: "spin",
+            order: 1,
+            default: 4,
+            value: 2,
+          },
+        },
+        expected: 2,
+      },
+      {
+        options: {
+          Foo: {
+            name: "Foo",
+            type: "spin",
+            order: 1,
+            default: 4,
+            value: 2,
+          },
+        },
+        expected: undefined,
+      },
+    ];
+    for (const testCase of testCases) {
+      const engine: USIEngine = {
+        uri: "dummy",
+        options: testCase.options,
+      } as USIEngine;
+      expect(getUSIEngineThreads(engine)).toBe(testCase.expected);
+    }
+  });
+
+  it("getUSIEngineMultiPV", () => {
+    const testCases: {
+      options: { [name: string]: USIEngineOption };
+      expected: number | undefined;
+    }[] = [
+      {
+        options: {
+          MultiPV: {
+            name: "MultiPV",
+            type: "spin",
+            order: 1,
+            default: 4,
+            value: 2,
+          },
+        },
+        expected: 2,
+      },
+      {
+        options: {
+          MultiPV: {
+            name: "MultiPV",
+            type: "spin",
+            order: 1,
+            default: 4,
+          },
+        },
+        expected: 4,
+      },
+      {
+        options: {
+          USI_MultiPV: {
+            name: "USI_MultiPV",
+            type: "spin",
+            order: 1,
+            default: 4,
+            value: 2,
+          },
+        },
+        expected: 2,
+      },
+      {
+        options: {
+          Foo: {
+            name: "Foo",
+            type: "spin",
+            order: 1,
+            default: 4,
+            value: 2,
+          },
+        },
+        expected: undefined,
+      },
+    ];
+    for (const testCase of testCases) {
+      const engine: USIEngine = {
+        uri: "dummy",
+        options: testCase.options,
+      } as USIEngine;
+      expect(getUSIEngineMultiPV(engine)).toBe(testCase.expected);
+    }
+  });
+
+  it("getUSIEngineStochasticPonder", () => {
+    const testCases: {
+      options: { [name: string]: USIEngineOption };
+      expected: boolean;
+    }[] = [
+      {
+        options: {
+          Stochastic_Ponder: {
+            name: "Stochastic_Ponder",
+            type: "check",
+            order: 1,
+            default: "true",
+            value: "false",
+          },
+        },
+        expected: false,
+      },
+      {
+        options: {
+          Stochastic_Ponder: {
+            name: "Stochastic_Ponder",
+            type: "check",
+            order: 1,
+            default: "false",
+            value: "true",
+          },
+        },
+        expected: true,
+      },
+      {
+        options: {
+          Stochastic_Ponder: {
+            name: "Stochastic_Ponder",
+            type: "check",
+            order: 1,
+            default: "true",
+          },
+        },
+        expected: true,
+      },
+      {
+        options: {
+          Foo: {
+            name: "Foo",
+            type: "check",
+            order: 1,
+            default: "false",
+            value: "true",
+          },
+        },
+        expected: false,
+      },
+    ];
+    for (const testCase of testCases) {
+      const engine: USIEngine = {
+        uri: "dummy",
+        options: testCase.options,
+      } as USIEngine;
+      expect(getUSIEngineStochasticPonder(engine)).toBe(testCase.expected);
+    }
   });
 
   it("duplicateEngine", () => {
@@ -103,7 +354,7 @@ describe("settings/usi", () => {
     expect(out.defaultName).toBe("Test Engine");
     expect(out.author).toBe("Author");
     expect(out.path).toBe("/foo/bar/baz");
-    expect(out.options).toStrictEqual({
+    expect(out.options).toEqual({
       foo: {
         name: "foo",
         type: "spin",
@@ -162,7 +413,7 @@ describe("settings/usi", () => {
       enableEarlyPonder: false,
     };
     mergeUSIEngine(lhs, rhs);
-    expect(lhs).toStrictEqual({
+    expect(lhs).toEqual({
       uri: "uri-b",
       name: "name-b",
       defaultName: "default-name-a",
@@ -183,6 +434,7 @@ describe("settings/usi", () => {
         game: true,
         mate: false,
       },
+      tags: ["対局"],
       enableEarlyPonder: false,
     });
   });
@@ -218,17 +470,44 @@ describe("settings/usi", () => {
       value: "b",
       vars: ["a", "b", "c"],
     };
+    const validComboOption2: USIEngineOption = {
+      name: "MyCombo2",
+      type: "combo",
+      order: 5,
+      default: "a",
+      value: "x",
+      vars: ["a", "b", "c"],
+    };
     const validFilenameOption: USIEngineOption = {
       name: "MyFilename",
       type: "filename",
-      order: 5,
+      order: 6,
       default: "<empty>",
       value: "/path/to/file",
     };
     const validButtonOption: USIEngineOption = {
       name: "MyButton",
       type: "button",
-      order: 6,
+      order: 7,
+    };
+    // AobaNNUE において default が min 未満の事例があったため default と等しいものは範囲外でも許容
+    const validSpinOption: USIEngineOption = {
+      name: "MySpin",
+      type: "spin",
+      order: 8,
+      default: 0,
+      min: 100,
+      max: 200,
+      value: 0,
+    };
+    const validSpinOption2: USIEngineOption = {
+      name: "MySpin2",
+      type: "spin",
+      order: 9,
+      default: 300,
+      min: 100,
+      max: 200,
+      value: 300,
     };
 
     it("ok", () => {
@@ -244,8 +523,11 @@ describe("settings/usi", () => {
             USI_Hash: validUSIHashOption,
             MyString: validStringOption,
             MyCombo: validComboOption,
+            MyCombo2: validComboOption2,
             MyFilename: validFilenameOption,
             MyButton: validButtonOption,
+            MySpin: validSpinOption,
+            MySpin2: validSpinOption2,
           },
           enableEarlyPonder: false,
         }),
@@ -265,8 +547,11 @@ describe("settings/usi", () => {
             USI_Hash: validUSIHashOption,
             MyString: validStringOption,
             MyCombo: validComboOption,
+            MyCombo2: validComboOption2,
             MyFilename: validFilenameOption,
             MyButton: validButtonOption,
+            MySpin: validSpinOption,
+            MySpin2: validSpinOption2,
           },
           enableEarlyPonder: false,
         }),
@@ -292,8 +577,11 @@ describe("settings/usi", () => {
             USI_Hash: validUSIHashOption,
             MyString: validStringOption,
             MyCombo: validComboOption,
+            MyCombo2: validComboOption2,
             MyFilename: validFilenameOption,
             MyButton: validButtonOption,
+            MySpin: validSpinOption,
+            MySpin2: validSpinOption2,
           },
           enableEarlyPonder: false,
         } as unknown as USIEngine),
@@ -320,8 +608,11 @@ describe("settings/usi", () => {
             },
             MyString: validStringOption,
             MyCombo: validComboOption,
+            MyCombo2: validComboOption2,
             MyFilename: validFilenameOption,
             MyButton: validButtonOption,
+            MySpin: validSpinOption,
+            MySpin2: validSpinOption2,
           },
           enableEarlyPonder: false,
         } as unknown as USIEngine),
@@ -347,13 +638,64 @@ describe("settings/usi", () => {
               value: 123,
             },
             MyCombo: validComboOption,
+            MyCombo2: validComboOption2,
             MyFilename: validFilenameOption,
             MyButton: validButtonOption,
+            MySpin: validSpinOption,
+            MySpin2: validSpinOption2,
           },
           enableEarlyPonder: false,
         } as unknown as USIEngine),
       ).toBeInstanceOf(Error);
     });
+  });
+
+  it("compareUSIEngineOptions", () => {
+    const lhs: USIEngine = {
+      ...testUSIEngine,
+      options: {
+        USI_Hash: { name: "USI_Hash", type: "spin", order: 0, default: 32, value: 64 },
+        USI_Ponder: { name: "USI_Ponder", type: "check", order: 1, default: "true" },
+        Refresh: { name: "Refresh", type: "button", order: 2 },
+        Log: { name: "Log", type: "button", order: 3 },
+        Book: { name: "Book", type: "filename", order: 4, default: "<empty>", value: "book.db" },
+        StringA: { name: "StringA", type: "string", order: 4, value: "foo" },
+        StringB: { name: "StringB", type: "string", order: 5, value: "bar" },
+        Depth: { name: "Depth", type: "spin", order: 6, default: 1, value: 2 }, // only lhs
+        NumberA: { name: "NumberA", type: "spin", order: 7, default: 1, value: 2 },
+        NumberB: { name: "NumberB", type: "spin", order: 8, default: 1 }, // default value
+        NumberC: { name: "NumberC", type: "spin", order: 9, default: 1, value: 2 },
+        NumberD: { name: "NumberD", type: "spin", order: 10, default: 1 }, // default value
+      },
+    };
+    const rhs: USIEngine = {
+      ...testUSIEngine,
+      options: {
+        USI_Hash: { name: "USI_Hash", type: "spin", order: 0, default: 32 }, // no value
+        USI_Ponder: { name: "USI_Ponder", type: "check", order: 1, default: "true" }, // equal
+        Refresh: { name: "Refresh", type: "button", order: 2 }, // skip
+        Log: { name: "Log", type: "check", order: 3, value: "true" }, // different type
+        Book: { name: "Book", type: "combo", order: 4, vars: [], value: "standard.db" }, // different type
+        StringA: { name: "StringA", type: "string", order: 4, value: "foo" }, // equal
+        StringB: { name: "StringB", type: "string", order: 5, value: "baz" }, // different value
+        ResignValue: { name: "ResignValue", type: "spin", order: 6, default: 1, value: -3000 }, // only rhs
+        NumberA: { name: "NumberA", type: "spin", order: 7, default: 1 }, // default value
+        NumberB: { name: "NumberB", type: "spin", order: 8, default: 1, value: 2 },
+        NumberC: { name: "NumberC", type: "spin", order: 9, default: 2 }, // default value
+        NumberD: { name: "NumberD", type: "spin", order: 10, default: 2, value: 1 },
+      },
+    };
+    const result = compareUSIEngineOptions(lhs, rhs);
+    expect(result).toStrictEqual([
+      { name: "USI_Hash", leftValue: 64, rightValue: 32, mergeable: true },
+      { name: "Log", rightValue: "true", mergeable: false },
+      { name: "Book", leftValue: "book.db", rightValue: "standard.db", mergeable: false },
+      { name: "StringB", leftValue: "bar", rightValue: "baz", mergeable: true },
+      { name: "Depth", leftValue: 2, mergeable: false },
+      { name: "NumberA", leftValue: 2, rightValue: 1, mergeable: true },
+      { name: "NumberB", leftValue: 1, rightValue: 2, mergeable: true },
+      { name: "ResignValue", rightValue: -3000, mergeable: false },
+    ]);
   });
 
   it("USIEngines", () => {
@@ -449,6 +791,64 @@ describe("settings/usi", () => {
       research: true,
       mate: true,
     });
+  });
+
+  it("USIEngines/tags", () => {
+    const engines = new USIEngines(
+      JSON.stringify({
+        engines: {
+          "es://usi-engine/a": {
+            tags: ["検討", "NNUE"],
+          },
+          "es://usi-engine/b": {
+            labels: {
+              game: true,
+              research: false,
+              mate: true,
+            },
+          },
+        },
+      }),
+    );
+    expect(engines.getEngine("es://usi-engine/a")?.tags).toStrictEqual(["検討", "NNUE"]);
+    expect(engines.getEngine("es://usi-engine/b")?.tags).toStrictEqual(["対局", "詰み探索"]);
+    expect(engines.tagList).toHaveLength(4);
+    engines.addTag("es://usi-engine/a", "対局");
+    engines.addTag("es://usi-engine/b", "DL");
+    expect(engines.getEngine("es://usi-engine/a")?.tags).toStrictEqual(["検討", "NNUE", "対局"]);
+    expect(engines.getEngine("es://usi-engine/b")?.tags).toStrictEqual(["対局", "詰み探索", "DL"]);
+    expect(engines.getEngine("es://usi-engine/a")?.labels).toStrictEqual({
+      game: true,
+      research: true,
+      mate: false,
+    });
+    expect(engines.getEngine("es://usi-engine/b")?.labels).toStrictEqual({
+      game: true,
+      research: false,
+      mate: true,
+    });
+    expect(engines.tagList.map((entry) => entry.name)).toStrictEqual([
+      "DL",
+      "NNUE",
+      "対局",
+      "検討",
+      "詰み探索",
+    ]);
+    engines.removeTag("es://usi-engine/a", "検討");
+    engines.removeTag("es://usi-engine/b", "詰み探索");
+    expect(engines.getEngine("es://usi-engine/a")?.tags).toStrictEqual(["NNUE", "対局"]);
+    expect(engines.getEngine("es://usi-engine/b")?.tags).toStrictEqual(["対局", "DL"]);
+    expect(engines.getEngine("es://usi-engine/a")?.labels).toStrictEqual({
+      game: true,
+      research: false,
+      mate: false,
+    });
+    expect(engines.getEngine("es://usi-engine/b")?.labels).toStrictEqual({
+      game: true,
+      research: false,
+      mate: false,
+    });
+    expect(engines.tagList).toHaveLength(3);
   });
 
   it("USIEngines/exportUSIEnginesForCLI", () => {

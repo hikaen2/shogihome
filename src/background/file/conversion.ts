@@ -1,47 +1,49 @@
-import { BatchConversionResult } from "@/common/file/conversion";
+import readline from "node:readline";
+import { BatchConversionResult } from "@/common/file/conversion.js";
 import {
   RecordFileFormat,
   detectRecordFileFormatByPath,
   exportRecordAsBuffer,
   importRecordFromBuffer,
-} from "@/common/file/record";
+} from "@/common/file/record.js";
 import {
   BatchConversionSettings,
   DestinationType,
   FileNameConflictAction,
-} from "@/common/settings/conversion";
-import { promises as fs } from "node:fs";
+  SourceType,
+} from "@/common/settings/conversion.js";
+import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
-import { getAppLogger } from "@/background/log";
-import { AppSettings, TextDecodingRule } from "@/common/settings/app";
-import { exists, listFiles } from "@/background/helpers/file";
-import { loadAppSettings } from "@/background/settings";
+import { getAppLogger } from "@/background/log.js";
+import { AppSettings, TextDecodingRule } from "@/common/settings/app.js";
+import { exists, listFiles } from "@/background/helpers/file.js";
+import { loadAppSettings } from "@/background/settings.js";
 import {
   ImmutableNode,
   ImmutableRecord,
   InitialPositionSFEN,
   Move,
+  Record,
   SpecialMoveType,
 } from "tsshogi";
-
-async function getAlternativeFilePathWithNumberSuffix(
-  filePath: string,
-  maxNumber: number,
-): Promise<string> {
-  const parsed = path.parse(filePath);
-  let suffix = 2;
-  while (await exists(filePath)) {
-    if (suffix > maxNumber) {
-      throw new Error("Too many files with the same name");
-    }
-    filePath = path.join(parsed.dir, parsed.name + "-" + suffix + parsed.ext);
-    suffix++;
-  }
-  return filePath;
-}
+import { resolveConflictFilePath } from "./filename.js";
 
 export async function convertRecordFiles(
   settings: BatchConversionSettings,
+  onProgress?: (progress: number) => void,
+): Promise<BatchConversionResult> {
+  getAppLogger().debug(`batch conversion: start ${JSON.stringify(settings)}`);
+  switch (settings.sourceType) {
+    case SourceType.DIRECTORY:
+      return await convertFromDirectory(settings, onProgress);
+    case SourceType.SINGLE_FILE:
+      return await convertFromFile(settings, onProgress);
+  }
+}
+
+async function convertFromDirectory(
+  settings: BatchConversionSettings,
+  onProgress: ((progress: number) => void) | undefined,
 ): Promise<BatchConversionResult> {
   const appSettings = await loadAppSettings();
   const result: BatchConversionResult = {
@@ -53,7 +55,6 @@ export async function convertRecordFiles(
     skippedTotal: 0,
   };
 
-  getAppLogger().debug(`batch conversion: start ${JSON.stringify(settings)}`);
   const sourceFiles = (
     await listFiles(settings.source, settings.subdirectories ? Infinity : 0)
   ).filter((file) => {
@@ -67,6 +68,11 @@ export async function convertRecordFiles(
       : new SingleFileWriter(settings, appSettings);
   await writer.open();
   for (const source of sourceFiles) {
+    if (onProgress) {
+      const progress =
+        (result.successTotal + result.failedTotal + result.skippedTotal) / sourceFiles.length;
+      onProgress(progress);
+    }
     const sourceFormat = detectRecordFileFormatByPath(source) as RecordFileFormat;
     try {
       const sourceData = await fs.readFile(source);
@@ -95,6 +101,69 @@ export async function convertRecordFiles(
   return result;
 }
 
+async function convertFromFile(
+  settings: BatchConversionSettings,
+  onProgress: ((progress: number) => void) | undefined,
+): Promise<BatchConversionResult> {
+  const appSettings = await loadAppSettings();
+  const result: BatchConversionResult = {
+    success: {},
+    successTotal: 0,
+    failed: {},
+    failedTotal: 0,
+    skipped: {},
+    skippedTotal: 0,
+  };
+
+  const fileSize = (await fs.stat(settings.singleFileSource)).size;
+  const lineReader = readline.createInterface({
+    input: createReadStream(settings.singleFileSource),
+    crlfDelay: Infinity,
+  });
+
+  // Create directory if not exists
+  await fs.mkdir(settings.destination, { recursive: true });
+
+  let lineNo = 0;
+  let readBytes = 0;
+  for await (let line of lineReader) {
+    readBytes += Buffer.byteLength(line, "utf-8") + 1;
+    if (lineNo === 0) {
+      line = line.replace(/^\uFEFF/, "");
+    }
+
+    try {
+      const record = Record.newByUSI(line);
+      if (record instanceof Error) {
+        throw record;
+      }
+      const fileName = `record_${String(lineNo + 1).padStart(6, "0")}${settings.destinationFormat}`;
+      const destination = path.join(settings.destination, fileName);
+      const exportResult = exportRecordAsBuffer(record, settings.destinationFormat, {
+        returnCode: appSettings.returnCode,
+        csa: { v3: appSettings.useCSAV3 },
+        useUTF8ForKifAndKi2: appSettings.useUTF8ForKifAndKi2,
+      });
+
+      // Export record
+      await fs.writeFile(destination, exportResult.data);
+      getAppLogger().debug(`batch conversion: success: line ${lineNo + 1} -> ${destination}`);
+      result.successTotal++;
+    } catch (e) {
+      getAppLogger().debug(
+        `batch conversion: failed: line ${lineNo + 1} in ${settings.singleFileSource}: ${e}`,
+      );
+      result.failedTotal++;
+    } finally {
+      if (onProgress) {
+        onProgress(readBytes / fileSize);
+      }
+      lineNo++;
+    }
+  }
+  return result;
+}
+
 class DirectoryWriter {
   constructor(
     private settings: BatchConversionSettings,
@@ -118,7 +187,7 @@ class DirectoryWriter {
         case FileNameConflictAction.OVERWRITE:
           break;
         case FileNameConflictAction.NUMBER_SUFFIX:
-          destination = await getAlternativeFilePathWithNumberSuffix(destination, 1000);
+          destination = await resolveConflictFilePath(destination);
           break;
         case FileNameConflictAction.SKIP:
           getAppLogger().debug(`batch conversion: skipped: ${source}`);
@@ -134,6 +203,7 @@ class DirectoryWriter {
     const exportResult = exportRecordAsBuffer(record, this.settings.destinationFormat, {
       returnCode: this.appSettings.returnCode,
       csa: { v3: this.appSettings.useCSAV3 },
+      useUTF8ForKifAndKi2: this.appSettings.useUTF8ForKifAndKi2,
     });
     await fs.writeFile(destination, exportResult.data);
     getAppLogger().debug(`batch conversion: success: ${source} -> ${destination}`);
@@ -190,7 +260,6 @@ class SingleFileWriter {
     let p: ImmutableNode = record.first;
     const pos = record.initialPosition.clone();
     const stack: [ImmutableNode, string][] = [];
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       if (p.next) {
         stack.push([p, moves]);
@@ -203,7 +272,7 @@ class SingleFileWriter {
       }
       if (p.move instanceof Move) {
         branches.push(moves + " " + p.move.usi);
-      } else if (this.appSettings.enableUSIFileResign && p.move.type === SpecialMoveType.RESIGN) {
+      } else if (this.settings.enableUSIResign && p.move.type === SpecialMoveType.RESIGN) {
         branches.push(moves + " resign");
       } else {
         branches.push(moves);

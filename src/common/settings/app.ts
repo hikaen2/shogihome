@@ -1,14 +1,19 @@
-import { Language, t } from "@/common/i18n";
-import { LogLevel, LogType } from "@/common/log";
-import { RecordFileFormat } from "@/common/file/record";
-import { defaultRecordFileNameTemplate } from "@/renderer/helpers/path";
-import { BoardLayoutType } from "./layout";
+import { Language, t } from "@/common/i18n/index.js";
+import { LogLevel, LogType } from "@/common/log.js";
+import { RecordFileFormat } from "@/common/file/record.js";
+import { defaultRecordFileNameTemplate } from "@/common/file/path.js";
+import { BoardLayoutType, PositionImageFontWeight } from "./layout.js";
+import { SearchCommentFormat } from "./comment.js";
+import { fileURLToCustomSchemeURL } from "@/common/url.js";
+import { removeLastSlash } from "@/common/helpers/path.js";
 
 export enum Thema {
   STANDARD = "standard",
   CHERRY_BLOSSOM = "cherry-blossom",
   AUTUMN = "autumn",
   SNOW = "snow",
+  CLASSIC = "classic",
+  BEIGE = "beige",
   DARK_GREEN = "dark-green",
   DARK = "dark",
 }
@@ -22,6 +27,7 @@ export enum BackgroundImageType {
 
 export enum PieceImageType {
   HITOMOJI = "hitomoji",
+  HITOMOJI_WOOD = "hitomojiWood",
   HITOMOJI_DARK = "hitomojiDark",
   HITOMOJI_GOTHIC = "hitomojiGothic",
   HITOMOJI_GOTHIC_DARK = "hitomojiGothicDark",
@@ -35,7 +41,10 @@ export enum KingPieceType {
 
 export enum BoardImageType {
   LIGHT = "light",
+  LIGHT2 = "light2",
+  LIGHT3 = "light3",
   WARM = "warm",
+  WARM2 = "warm2",
   RESIN = "resin",
   RESIN2 = "resin2",
   RESIN3 = "resin3",
@@ -50,6 +59,7 @@ export enum BoardImageType {
 
 export enum PieceStandImageType {
   STANDARD = "standard",
+  DARK_WOOD = "dark-wood",
   GREEN = "green",
   CHERRY_BLOSSOM = "cherry-blossom",
   AUTUMN = "autumn",
@@ -57,6 +67,12 @@ export enum PieceStandImageType {
   DARK_GREEN = "dark-green",
   DARK = "dark",
   CUSTOM_IMAGE = "custom-image",
+}
+
+export enum PromotionSelectorStyle {
+  HORIZONTAL = "horizontal",
+  VERTICAL_PREFER_BOTTOM = "verticalPreferBottom",
+  HORIZONTAL_PREFER_RIGHT = "horizontalPreferRight",
 }
 
 export enum BoardLabelType {
@@ -77,6 +93,7 @@ export enum RightSideControlType {
 export enum TabPaneType {
   SINGLE = "single",
   DOUBLE = "double",
+  DOUBLE_V2 = "doubleV2",
 }
 
 export enum Tab {
@@ -95,6 +112,13 @@ export enum TextDecodingRule {
   AUTO_DETECT = "autoDetect",
 }
 
+export enum NodeCountFormat {
+  PLAIN = "plain",
+  COMMA_SEPARATED = "commaSeparated",
+  COMPACT = "compact",
+  JAPANESE = "japanese",
+}
+
 export enum EvaluationViewFrom {
   BLACK = "black",
   EACH = "each",
@@ -103,6 +127,11 @@ export enum EvaluationViewFrom {
 export enum ClockSoundTarget {
   ALL = "all",
   ONLY_USER = "onlyUser",
+}
+
+export enum RecordShortcutKeys {
+  VERTICAL = "vertical",
+  HORIZONTAL = "horizontal",
 }
 
 export enum PositionImageStyle {
@@ -123,10 +152,9 @@ export enum PositionImageHandLabelType {
   NONE = "none",
 }
 
-export enum PositionImageFontWeight {
-  W400 = "400",
-  W400X = "400+",
-  W700X = "700+",
+export enum BranchListMode {
+  SIBLING = "sibling",
+  NEXT_MOVE = "nextMove",
 }
 
 export type AppSettings = {
@@ -146,7 +174,9 @@ export type AppSettings = {
   deletePieceImageMargin: boolean;
   boardImage: BoardImageType;
   boardImageFileURL?: string;
+  boardGridColor: string | null;
   pieceStandImage: PieceStandImageType;
+  promotionSelectorStyle: PromotionSelectorStyle;
   pieceStandImageFileURL?: string;
   enableTransparent: boolean;
   boardOpacity: number;
@@ -161,6 +191,9 @@ export type AppSettings = {
   clockVolume: number;
   clockPitch: number;
   clockSoundTarget: ClockSoundTarget;
+
+  // Shortcut
+  recordShortcutKeys: RecordShortcutKeys;
 
   // Board View
   boardFlipping: boolean;
@@ -177,29 +210,43 @@ export type AppSettings = {
   defaultRecordFileFormat: RecordFileFormat;
   textDecodingRule: TextDecodingRule;
   returnCode: string;
-  autoSaveDirectory: string;
+  autoSaveDirectory: string; // Deprecated
   recordFileNameTemplate: string;
   useCSAV3: boolean;
+  useUTF8ForKifAndKi2: boolean;
   enableUSIFileStartpos: boolean;
-  enableUSIFileResign: boolean;
+  enableUSIFileResign: boolean; // Deprecated
+  enableUSIFileSpecialMoves: boolean;
+  showPasteDialog: boolean;
+  liveDuplicatePositionDetection: boolean;
+
+  // Opening Book
+  bookOnTheFlyThresholdMB: number;
+  flippedBook: boolean;
 
   // Engine
   translateEngineOptionName: boolean;
   engineTimeoutSeconds: number;
+  nodeCountFormat: NodeCountFormat;
+  showEngineOptionDetails: boolean;
 
   // Evaluation
   evaluationViewFrom: EvaluationViewFrom;
   maxArrowsPerEngine: number;
+  arrowScoreDiffRange: number;
+  showArrowScore: boolean;
   coefficientInSigmoid: number;
   badMoveLevelThreshold1: number;
   badMoveLevelThreshold2: number;
   badMoveLevelThreshold3: number;
   badMoveLevelThreshold4: number;
   maxPVTextLength: number;
+  searchCommentFormat: SearchCommentFormat;
 
   // Record View
   showElapsedTimeInRecordView: boolean;
   showCommentInRecordView: boolean;
+  branchListMode: BranchListMode;
 
   // Logging
   enableAppLog: boolean;
@@ -214,18 +261,22 @@ export type AppSettings = {
   positionImageHandLabelType: PositionImageHandLabelType;
   useBookmarkAsPositionImageHeader: boolean;
   positionImageHeader: string;
-  positionImageCharacterY: number;
+  positionImageCharacterY: number; // Deprecated
   positionImageFontScale: number;
   positionImageFontWeight: PositionImageFontWeight;
 
   // File Path
   lastRecordFilePath: string;
+  lastBookFilePath: string;
   lastUSIEngineFilePath: string;
   lastImageExportFilePath: string;
   lastOtherFilePath: string;
 
   // Record Info View
   emptyRecordInfoVisibility: boolean;
+
+  // Low Level
+  enableHardwareAcceleration: boolean;
 };
 
 export function isLogEnabled(type: LogType, appSettings: AppSettings): boolean {
@@ -239,79 +290,7 @@ export function isLogEnabled(type: LogType, appSettings: AppSettings): boolean {
   }
 }
 
-export type AppSettingsUpdate = {
-  language?: Language;
-  thema?: Thema;
-  backgroundImageType?: BackgroundImageType;
-  backgroundImageFileURL?: string;
-  boardLayoutType?: BoardLayoutType;
-  pieceImage?: PieceImageType;
-  kingPieceType?: KingPieceType;
-  pieceImageFileURL?: string;
-  croppedPieceImageBaseURL?: string;
-  croppedPieceImageQuery?: string; // キャッシュ回避用のクエリ
-  deletePieceImageMargin?: boolean;
-  boardImage?: BoardImageType;
-  boardImageFileURL?: string;
-  pieceStandImage?: PieceStandImageType;
-  pieceStandImageFileURL?: string;
-  enableTransparent?: boolean;
-  boardOpacity?: number;
-  pieceStandOpacity?: number;
-  recordOpacity?: number;
-  boardLabelType?: BoardLabelType;
-  leftSideControlType?: LeftSideControlType;
-  rightSideControlType?: RightSideControlType;
-  pieceVolume?: number;
-  clockVolume?: number;
-  clockPitch?: number;
-  clockSoundTarget?: ClockSoundTarget;
-  boardFlipping?: boolean;
-  tabPaneType?: TabPaneType;
-  tab?: Tab;
-  tab2?: Tab;
-  topPaneHeightPercentage?: number;
-  topPanePreviousHeightPercentage?: number;
-  bottomLeftPaneWidthPercentage?: number;
-  defaultRecordFileFormat?: RecordFileFormat;
-  textDecodingRule?: TextDecodingRule;
-  returnCode?: string;
-  autoSaveDirectory?: string;
-  recordFileNameTemplate?: string;
-  useCSAV3?: boolean;
-  enableUSIFileStartpos?: boolean;
-  enableUSIFileResign?: boolean;
-  translateEngineOptionName?: boolean;
-  engineTimeoutSeconds?: number;
-  evaluationViewFrom?: EvaluationViewFrom;
-  maxArrowsPerEngine?: number;
-  coefficientInSigmoid?: number;
-  badMoveLevelThreshold1?: number;
-  badMoveLevelThreshold2?: number;
-  badMoveLevelThreshold3?: number;
-  badMoveLevelThreshold4?: number;
-  maxPVTextLength?: number;
-  showElapsedTimeInRecordView?: boolean;
-  showCommentInRecordView?: boolean;
-  enableAppLog?: boolean;
-  enableUSILog?: boolean;
-  enableCSALog?: boolean;
-  logLevel?: LogLevel;
-  positionImageStyle?: PositionImageStyle;
-  positionImageSize?: number;
-  positionImageTypeface?: PositionImageTypeface;
-  positionImageHandLabelType?: PositionImageHandLabelType;
-  useBookmarkAsPositionImageHeader?: boolean;
-  positionImageHeader?: string;
-  positionImageCharacterY?: number;
-  positionImageFontScale?: number;
-  positionImageFontWeight?: PositionImageFontWeight;
-  lastRecordFilePath?: string;
-  lastUSIEngineFilePath?: string;
-  lastImageExportFilePath?: string;
-  lastOtherFilePath?: string;
-  emptyRecordInfoVisibility?: boolean;
-};
+export type AppSettingsUpdate = Partial<AppSettings>;
 
 export function buildUpdatedAppSettings(org: AppSettings, update: AppSettingsUpdate): AppSettings {
   const updated = {
@@ -322,6 +301,7 @@ export function buildUpdatedAppSettings(org: AppSettings, update: AppSettingsUpd
   // カラム構成に合わせて選択可能なタブを制限する。
   switch (updated.tabPaneType) {
     case TabPaneType.DOUBLE:
+    case TabPaneType.DOUBLE_V2:
       switch (updated.tab) {
         case Tab.COMMENT:
           updated.tab = Tab.RECORD_INFO;
@@ -329,6 +309,15 @@ export function buildUpdatedAppSettings(org: AppSettings, update: AppSettingsUpd
         case Tab.CHART:
         case Tab.PERCENTAGE_CHART:
           updated.tab = Tab.PV;
+          break;
+      }
+      break;
+  }
+  switch (updated.tabPaneType) {
+    case TabPaneType.DOUBLE_V2:
+      switch (updated.tab2) {
+        case Tab.COMMENT:
+          updated.tab2 = Tab.CHART;
           break;
       }
       break;
@@ -344,18 +333,20 @@ export function buildUpdatedAppSettings(org: AppSettings, update: AppSettingsUpd
 
 export function defaultAppSettings(opt?: {
   returnCode?: string;
-  autoSaveDirectory?: string;
+  autoSaveDirectory?: string; // Deprecated
 }): AppSettings {
   return {
     language: Language.JA,
     thema: Thema.STANDARD,
     backgroundImageType: BackgroundImageType.NONE,
     boardLayoutType: BoardLayoutType.STANDARD,
-    pieceImage: PieceImageType.HITOMOJI,
+    pieceImage: PieceImageType.HITOMOJI_WOOD,
     kingPieceType: KingPieceType.GYOKU_AND_OSHO,
     deletePieceImageMargin: false,
-    boardImage: BoardImageType.RESIN2,
-    pieceStandImage: PieceStandImageType.STANDARD,
+    boardImage: BoardImageType.LIGHT2,
+    boardGridColor: null,
+    pieceStandImage: PieceStandImageType.DARK_WOOD,
+    promotionSelectorStyle: PromotionSelectorStyle.HORIZONTAL,
     enableTransparent: false,
     boardOpacity: 1.0,
     pieceStandOpacity: 1.0,
@@ -367,10 +358,11 @@ export function defaultAppSettings(opt?: {
     clockVolume: 30,
     clockPitch: 500,
     clockSoundTarget: ClockSoundTarget.ONLY_USER,
+    recordShortcutKeys: RecordShortcutKeys.VERTICAL,
     boardFlipping: false,
-    tabPaneType: TabPaneType.DOUBLE,
+    tabPaneType: TabPaneType.DOUBLE_V2,
     tab: Tab.RECORD_INFO,
-    tab2: Tab.COMMENT,
+    tab2: Tab.CHART,
     topPaneHeightPercentage: 60,
     topPanePreviousHeightPercentage: 60,
     bottomLeftPaneWidthPercentage: 60,
@@ -380,20 +372,32 @@ export function defaultAppSettings(opt?: {
     autoSaveDirectory: opt?.autoSaveDirectory || "",
     recordFileNameTemplate: defaultRecordFileNameTemplate,
     useCSAV3: false,
+    useUTF8ForKifAndKi2: false,
     enableUSIFileStartpos: true,
     enableUSIFileResign: false,
+    enableUSIFileSpecialMoves: false,
+    showPasteDialog: true,
+    liveDuplicatePositionDetection: true,
+    bookOnTheFlyThresholdMB: 64,
+    flippedBook: true,
     translateEngineOptionName: true,
     engineTimeoutSeconds: 10,
+    nodeCountFormat: NodeCountFormat.COMMA_SEPARATED,
+    showEngineOptionDetails: false,
     evaluationViewFrom: EvaluationViewFrom.EACH,
     maxArrowsPerEngine: 3,
+    arrowScoreDiffRange: 100,
+    showArrowScore: true,
     coefficientInSigmoid: 600,
     badMoveLevelThreshold1: 5,
     badMoveLevelThreshold2: 10,
     badMoveLevelThreshold3: 20,
     badMoveLevelThreshold4: 50,
     maxPVTextLength: 15,
+    searchCommentFormat: SearchCommentFormat.SHOGIHOME,
     showElapsedTimeInRecordView: true,
     showCommentInRecordView: true,
+    branchListMode: BranchListMode.SIBLING,
     enableAppLog: false,
     enableUSILog: false,
     enableCSALog: false,
@@ -408,10 +412,12 @@ export function defaultAppSettings(opt?: {
     positionImageFontScale: 1,
     positionImageFontWeight: PositionImageFontWeight.W400X,
     lastRecordFilePath: "",
+    lastBookFilePath: "",
     lastUSIEngineFilePath: "",
     lastImageExportFilePath: "",
     lastOtherFilePath: "",
     emptyRecordInfoVisibility: true,
+    enableHardwareAcceleration: true,
   };
 }
 
@@ -419,16 +425,14 @@ export function normalizeAppSettings(
   settings: AppSettings,
   opt?: {
     returnCode?: string;
-    autoSaveDirectory?: string;
+    autoSaveDirectory?: string; // Deprecated
   },
 ): AppSettings {
   const result = {
     ...defaultAppSettings(opt),
     ...settings,
   };
-  if (result.autoSaveDirectory.endsWith("\\") || result.autoSaveDirectory.endsWith("/")) {
-    result.autoSaveDirectory = result.autoSaveDirectory.slice(0, -1);
-  }
+  result.autoSaveDirectory = removeLastSlash(result.autoSaveDirectory);
   // 旧バージョンでは盤画像に合わせて自動で駒台の色が選ばれていた。
   if (!settings.pieceStandImage) {
     switch (settings.boardImage) {
@@ -450,6 +454,10 @@ export function normalizeAppSettings(
   if (result.tab === Tab.INVISIBLE) {
     result.tab = Tab.RECORD_INFO;
   }
+  // 旧バージョンと行き来すると DOUBLE_V2 のまま Tab.COMMENT が選択された状態が発生しうる。
+  if (result.tabPaneType === TabPaneType.DOUBLE_V2 && result.tab2 === Tab.COMMENT) {
+    result.tab2 = Tab.CHART;
+  }
   // 旧バージョンではフォントの太さは設定項目になく、明朝体とゴシック体で違っていた。
   if (!settings.positionImageFontWeight) {
     switch (settings.positionImageTypeface) {
@@ -460,6 +468,12 @@ export function normalizeAppSettings(
         result.positionImageFontWeight = PositionImageFontWeight.W700X;
         break;
     }
+  }
+  // 旧バージョンでは On-the-fly の最大値が 4096 だったが 512 に変更した。
+  result.bookOnTheFlyThresholdMB = Math.min(Math.max(result.bookOnTheFlyThresholdMB, 0), 512);
+  // 旧バージョンの USI 棋譜では resign のみに対応していた。
+  if (settings.enableUSIFileSpecialMoves === undefined) {
+    result.enableUSIFileSpecialMoves = result.enableUSIFileResign;
   }
   return result;
 }
@@ -523,6 +537,8 @@ export function validateAppSettings(settings: AppSettings): Error | undefined {
 
 export function getPieceImageURLTemplate(settings: AppSettings): string {
   switch (settings.pieceImage) {
+    case PieceImageType.HITOMOJI_WOOD:
+      return "./piece/hitomoji_wood/${piece}.png";
     case PieceImageType.HITOMOJI_DARK:
       return "./piece/hitomoji_dark/${piece}.png";
     case PieceImageType.HITOMOJI_GOTHIC:
@@ -532,7 +548,9 @@ export function getPieceImageURLTemplate(settings: AppSettings): string {
     case PieceImageType.CUSTOM_IMAGE:
       if (settings.croppedPieceImageBaseURL) {
         const query = settings.croppedPieceImageQuery ? `?${settings.croppedPieceImageQuery}` : "";
-        return settings.croppedPieceImageBaseURL + "/${piece}.png" + query;
+        return (
+          fileURLToCustomSchemeURL(settings.croppedPieceImageBaseURL) + "/${piece}.png" + query
+        );
       }
   }
   return "./piece/hitomoji/${piece}.png";

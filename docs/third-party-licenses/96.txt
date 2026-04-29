@@ -1,25 +1,56 @@
-Copyright (c) 2014, Eugene Ware
-All rights reserved.
-  
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:  
+# parse-bmfont-ascii
 
-1. Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.  
-2. Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.  
-3. Neither the name of Eugene Ware nor the names of its contributors
-   may be used to endorse or promote products derived from this software
-   without specific prior written permission.  
-  
-THIS SOFTWARE IS PROVIDED BY EUGENE WARE ''AS IS'' AND ANY
-EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL EUGENE WARE BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+[![stable](http://badges.github.io/stability-badges/dist/stable.svg)](http://github.com/badges/stability-badges)
+
+Parses ASCII (text) [BMFont files](http://www.angelcode.com/products/bmfont/).
+
+Takes a string or Buffer:
+
+```js
+var fs = require('fs')
+var parse = require('parse-bmfont-xml')
+
+fs.readFileSync(__dirname+'/Arial.fnt', function(err, data) {
+  var result = parse(data)
+  console.log(result.info.face)   // "Arial"
+  console.log(result.pages)       // [ 'sheet0.png' ]
+  console.log(result.chars)       // [ ... char data ... ]
+  console.log(result.kernings)    // [ ... kernings data ... ]
+})
+```
+
+The spec for the returned JSON object is [here](https://github.com/mattdesl/bmfont2json/wiki/JsonSpec). The input data should match the spec, see [test/Nexa Light-32.fnt](test/Nexa Light-32.fnt) for an example.
+
+## See Also
+
+See [text-modules](https://github.com/mattdesl/text-modules) for related modules.
+
+## Usage
+
+[![NPM](https://nodei.co/npm/parse-bmfont-ascii.png)](https://www.npmjs.com/package/parse-bmfont-ascii)
+
+#### `result = parse(data)`
+
+Parses `data`, a string or Buffer that represents ASCII (text) data of an AngelCode BMFont file. The returned `result` object looks like this:
+
+```js
+{
+     pages: [
+         "sheet_0.png", 
+         "sheet_1.png"
+     ],
+     chars: [
+         { chnl, height, id, page, width, x, y, xoffset, yoffset, xadvance },
+         ...
+     ],
+     info: { ... },
+     common: { ... },
+     kernings: [
+         { first, second, amount }
+     ]
+}
+```
+
+## License
+
+MIT, see [LICENSE.md](http://github.com/mattdesl/parse-bmfont-ascii/blob/master/LICENSE.md) for details.

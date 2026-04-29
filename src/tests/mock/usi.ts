@@ -1,18 +1,28 @@
-import { USIEngine } from "@/common/settings/usi";
+import { USIEngine } from "@/common/settings/usi.js";
 
-export const usiEngines: USIEngine = {
-  uri: "es://usi/test-engine",
+export const testUSIEngine: USIEngine = {
+  uri: "es://usi-engine/test-engine",
   name: "my usi engine",
   defaultName: "engine",
   author: "author",
   path: "/engines/engines",
   options: {},
-  labels: {},
+  labels: {
+    game: true,
+    research: true,
+    mate: false,
+  },
+  tags: ["対局"],
   enableEarlyPonder: false,
+  extraBook: {
+    enabled: false,
+    filePath: "",
+    onTheFly: false,
+  },
 };
 
-export const usiEnginesWithPonder: USIEngine = {
-  uri: "es://usi/test-engine",
+export const testUSIEngineWithPonder: USIEngine = {
+  uri: "es://usi-engine/test-engine",
   name: "my usi engine",
   defaultName: "engine",
   author: "author",
@@ -25,6 +35,10 @@ export const usiEnginesWithPonder: USIEngine = {
       value: "true",
     },
   },
-  labels: {},
+  labels: {
+    game: true,
+    research: true,
+    mate: false,
+  },
   enableEarlyPonder: false,
 };

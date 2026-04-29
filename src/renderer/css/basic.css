@@ -1,5 +1,6 @@
 body {
   margin: 0;
+  touch-action: manipulation;
 }
 
 body::-webkit-scrollbar {
@@ -39,8 +40,16 @@ body::-webkit-scrollbar {
   flex-wrap: wrap;
 }
 
+.column.wrap-reverse {
+  flex-wrap: wrap-reverse;
+}
+
 .row.wrap {
   flex-wrap: wrap;
+}
+
+.row.wrap-reverse {
+  flex-wrap: wrap-reverse;
 }
 
 .column > .auto {
@@ -57,6 +66,18 @@ body::-webkit-scrollbar {
 
 .row > .grow {
   flex: 1;
+}
+
+.align-center {
+  align-items: center;
+}
+
+.align-start {
+  align-items: flex-start;
+}
+
+.align-end {
+  align-items: flex-end;
 }
 
 .regular-interval {
@@ -84,6 +105,11 @@ body::-webkit-scrollbar {
 
 .warning {
   background-color: var(--text-bg-color-warning);
+}
+
+.danger {
+  color: var(--text-color-danger);
+  background-color: var(--text-bg-color-danger);
 }
 
 .scroll {

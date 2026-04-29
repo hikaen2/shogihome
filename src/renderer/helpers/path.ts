@@ -1,10 +1,10 @@
+import { getBlackPlayerName, getWhitePlayerName, ImmutableRecord, Move } from "tsshogi";
+import { getDateString } from "@/common/helpers/datetime.js";
+import { defaultRecordFileNameTemplate, escapeFileName } from "@/common/file/path.js";
 import {
-  RecordMetadataKey,
-  getBlackPlayerName,
-  getWhitePlayerName,
-  ImmutableRecordMetadata,
-} from "tsshogi";
-import { getDateString } from "@/common/helpers/datetime";
+  getDateStringFromMetadata,
+  getRecordTitleFromMetadata,
+} from "@/common/helpers/metadata.js";
 
 export function basename(path: string): string {
   return path.substring(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1);
@@ -32,37 +32,19 @@ export function join(path: string, ...paths: string[]): string {
   return result;
 }
 
-function escapePath(path: string): string {
-  return path.replaceAll(/[<>:"/\\|?*]/g, "_");
-}
-
-function getDateStringByMeta(metadata: ImmutableRecordMetadata): string {
-  const datetime =
-    metadata.getStandardMetadata(RecordMetadataKey.START_DATETIME) ||
-    metadata.getStandardMetadata(RecordMetadataKey.DATE);
-  if (datetime) {
-    return datetime.trim().replaceAll(" ", "_").replaceAll("/", "").replaceAll(":", "");
-  }
-  return getDateString().replaceAll("/", "");
-}
-
-export const defaultRecordFileNameTemplate = "{datetime}{_title}{_sente}{_gote}";
+type RecordFileNameOptions = {
+  template?: string;
+  extension?: string;
+};
 
 export function generateRecordFileName(
-  metadata: ImmutableRecordMetadata,
-  template?: string,
-  extension?: string,
+  record: ImmutableRecord,
+  options: RecordFileNameOptions = {},
 ): string {
   // get metadata
-  const datetime = getDateStringByMeta(metadata);
-  const title =
-    metadata.getStandardMetadata(RecordMetadataKey.TITLE) ||
-    metadata.getStandardMetadata(RecordMetadataKey.TOURNAMENT) ||
-    metadata.getStandardMetadata(RecordMetadataKey.OPUS_NAME) ||
-    metadata.getStandardMetadata(RecordMetadataKey.OPUS_NO) ||
-    metadata.getStandardMetadata(RecordMetadataKey.PLACE) ||
-    metadata.getStandardMetadata(RecordMetadataKey.POSTED_ON) ||
-    metadata.getStandardMetadata(RecordMetadataKey.AUTHOR);
+  const metadata = record.metadata;
+  const datetime = getDateStringFromMetadata(metadata) || getDateString().replaceAll("/", "");
+  const title = getRecordTitleFromMetadata(metadata);
   const sente = getBlackPlayerName(metadata);
   const gote = getWhitePlayerName(metadata);
   const hex5 = Math.floor(Math.random() * 0x100000)
@@ -71,11 +53,16 @@ export function generateRecordFileName(
     .padStart(5, "0");
 
   // build parameter map
+  let ply = 0;
+  for (let node = record.first.next; node && node.move instanceof Move; node = node.next) {
+    ply = node.ply;
+  }
   const params: { [key: string]: string } = {
     datetime,
     title: title || "",
     sente: sente || "",
     gote: gote || "",
+    ply: ply.toString(),
     hex5,
   };
   for (const key in params) {
@@ -85,15 +72,15 @@ export function generateRecordFileName(
   }
 
   // generate file name
-  let ret = template || defaultRecordFileNameTemplate;
-  ret = escapePath(ret);
+  let ret = options.template || defaultRecordFileNameTemplate;
+  ret = escapeFileName(ret);
   for (const key in params) {
     const value = params[key];
-    ret = escapePath(ret.replaceAll("{" + key + "}", value));
+    ret = escapeFileName(ret.replaceAll("{" + key + "}", value));
   }
   ret = ret.trim();
-  if (extension) {
-    ret = ret + (extension.startsWith(".") ? extension : "." + extension);
+  if (options.extension) {
+    ret = ret + (options.extension.startsWith(".") ? options.extension : "." + options.extension);
   } else {
     ret = ret + ".kif";
   }

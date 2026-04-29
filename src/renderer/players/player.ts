@@ -1,5 +1,5 @@
-import { GameResult } from "@/common/game/result";
-import { TimeStates } from "@/common/game/time";
+import { GameResult } from "@/common/game/result.js";
+import { TimeStates } from "@/common/game/time.js";
 import { ImmutablePosition, Move } from "tsshogi";
 
 export type SearchInfo = {
@@ -36,7 +36,12 @@ export interface Player {
     handler: SearchHandler,
   ): Promise<void>;
   startPonder(position: ImmutablePosition, usi: string, timeStates: TimeStates): Promise<void>;
-  startMateSearch(position: ImmutablePosition, usi: string, handler: MateHandler): Promise<void>;
+  startMateSearch(
+    position: ImmutablePosition,
+    usi: string,
+    maxSeconds: number,
+    handler: MateHandler,
+  ): Promise<void>;
   stop(): Promise<void>;
   gameover(result: GameResult): Promise<void>;
   close(): Promise<void>;
