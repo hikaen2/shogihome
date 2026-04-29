@@ -385,6 +385,20 @@ class Store {
     }
   }
 
+  startGameWithSavedSettings(): void {
+    if (this.appState !== AppState.NORMAL || useBusyState().isBusy) {
+      return;
+    }
+    api
+      .loadGameSettings()
+      .then((settings) => {
+        this.startGame(settings);
+      })
+      .catch((e) => {
+        useErrorStore().add(e);
+      });
+  }
+
   showCSAGameDialog(): void {
     if (this.appState === AppState.NORMAL) {
       this._appState = AppState.CSA_GAME_DIALOG;

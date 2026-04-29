@@ -273,10 +273,9 @@ onBeforeUnmount(() => {
 });
 
 const onGame = () => {
-  // isGameMenuVisible.value = true;
-  store.showGameDialog();
-  emit("close");
+  store.startGameWithSavedSettings();
 };
+
 
 const onShowGameResults = () => {
   store.showGameResults();
