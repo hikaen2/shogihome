@@ -7,7 +7,10 @@
       >
         <!-- 検討 -->
         <button
-          v-show="store.researchState !== ResearchState.RUNNING"
+          v-show="
+            (store.appState === AppState.GAME || store.appState === AppState.CSA_GAME) &&
+            store.researchState !== ResearchState.RUNNING
+          "
           class="control-item"
           data-hotkey="Mod+r"
           @click="onToggleResearch"
